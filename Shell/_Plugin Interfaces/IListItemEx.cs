@@ -8,7 +8,7 @@ using Size = System.Drawing.Size;
 
 namespace BExplorer.Shell._Plugin_Interfaces {
 
-  public interface IListItemEx : IEnumerable<IListItemEx>, IDisposable, IEquatable<IListItemEx>, IEqualityComparer<IListItemEx> {
+  public interface IListItemEx : IEnumerable<IListItemEx>, IEquatable<IListItemEx>, IEqualityComparer<IListItemEx> {
 
     IntPtr ParentPIDL { get; set; }
 
@@ -111,6 +111,7 @@ namespace BExplorer.Shell._Plugin_Interfaces {
     Boolean IsLink { get; }
 
     Boolean IsShared { get; }
+    Boolean IsSlow { get; }
 
     /// <summary>We should remove this and use this.Parent.IsSearchFolder</summary>
     Boolean IsParentSearchFolder { get; set; }
@@ -163,6 +164,10 @@ namespace BExplorer.Shell._Plugin_Interfaces {
     int GetSystemImageListIndex(IntPtr pidl, ShellIconType type, ShellIconFlags flags);
 
     int GetUniqueID();
+
+    int[] cColumns { get; set; }
+
+    void Dispose();
 
   }
 }

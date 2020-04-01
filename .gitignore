@@ -258,3 +258,24 @@ BExplorer.sln.DotSettings
 StyleCop.Cache
 BExplorer/BetterExplorer/BEHelper.dll.config
 *.obj
+/Deploy
+/AutomaticUpdater/TestWindowsService
+/AutomaticUpdater/TestConsoleApp
+/AutomaticUpdater/TestAppWPF4
+/AutomaticUpdater/TestAppWPF
+/AutomaticUpdater/TestAppVB
+/AutomaticUpdater/TestApp4
+/AutomaticUpdater/TestApp
+/AutomaticUpdater/ControlWPF4
+/Fluent.Ribbon-develop/.github
+/Fluent.Ribbon-develop/.paket
+/Fluent.Ribbon-develop/Doc
+/Fluent.Ribbon-develop/Fluent.Ribbon/Themes/Styles.txt
+/Fluent.Ribbon-develop/Fluent.Ribbon/Fluent.Ribbon.NET 4.0.csproj
+/Fluent.Ribbon-develop/Fluent.Ribbon/Fluent.Ribbon.NET 4.6.2.csproj
+/Better Explorer AI Setup/OutputWeb
+/Better Explorer AI Setup/Better Explorer AI Setup-cache
+/Debug/ImDiskNet.xml
+/Debug/ImDiskNet.pdb
+/Debug/ImDiskNet.dll
+/ShellExplorerControls/SHControls/ShellExplorerControls
