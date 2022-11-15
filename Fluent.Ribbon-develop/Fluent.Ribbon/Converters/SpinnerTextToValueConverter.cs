@@ -11,12 +11,11 @@
     public class SpinnerTextToValueConverter : IValueConverter
     {
         /// <summary>
-        /// Converts a value.
+        /// Gets a default instance of <see cref="SpinnerTextToValueConverter"/>.
         /// </summary>
-        /// <returns>
-        /// A converted value. If the method returns null, the valid null value is used.
-        /// </returns>
-        /// <param name="value">The value produced by the binding source.</param><param name="targetType">The type of the binding target property.</param><param name="parameter">The converter parameter to use.</param><param name="culture">The culture to use in the converter.</param>
+        public static readonly SpinnerTextToValueConverter DefaultInstance = new SpinnerTextToValueConverter();
+
+        /// <inheritdoc />
         public virtual object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             var converterParam = (Tuple<string, double>)parameter;
@@ -26,13 +25,7 @@
             return this.TextToDouble((string)value, format, previousValue, culture);
         }
 
-        /// <summary>
-        /// Converts a value.
-        /// </summary>
-        /// <returns>
-        /// A converted value. If the method returns null, the valid null value is used.
-        /// </returns>
-        /// <param name="value">The value that is produced by the binding target.</param><param name="targetType">The type to convert to.</param><param name="parameter">The converter parameter to use.</param><param name="culture">The culture to use in the converter.</param>
+        /// <inheritdoc />
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
             return this.DoubleToText((double)value, (string)parameter, culture);
@@ -49,10 +42,10 @@
 
             foreach (var symbol in text)
             {
-                if (char.IsDigit(symbol) ||
-                    symbol == ',' ||
-                    symbol == '.' ||
-                    (symbol == '-' && stringBuilder.Length == 0))
+                if (char.IsDigit(symbol)
+                    || symbol == ','
+                    || symbol == '.'
+                    || (symbol == '-' && stringBuilder.Length == 0))
                 {
                     stringBuilder.Append(symbol);
                 }
@@ -60,9 +53,7 @@
 
             text = stringBuilder.ToString();
 
-            double doubleValue;
-
-            if (double.TryParse(text, NumberStyles.Any, culture, out doubleValue) == false)
+            if (double.TryParse(text, NumberStyles.Any, culture, out var doubleValue) == false)
             {
                 doubleValue = previousValue;
             }

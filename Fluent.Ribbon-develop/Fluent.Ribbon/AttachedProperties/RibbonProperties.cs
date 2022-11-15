@@ -4,10 +4,13 @@ namespace Fluent
     using System.Windows;
     using System.Windows.Media;
     using Fluent.Extensibility;
+    using Fluent.Internal.KnownBoxes;
+    using JetBrains.Annotations;
 
     /// <summary>
     /// Attached Properties for the Fluent Ribbon library
     /// </summary>
+    [PublicAPI]
     public static class RibbonProperties
     {
         #region Size Property
@@ -24,7 +27,7 @@ namespace Fluent
                                               FrameworkPropertyMetadataOptions.AffectsRender |
                                               FrameworkPropertyMetadataOptions.AffectsParentArrange |
                                               FrameworkPropertyMetadataOptions.AffectsParentMeasure,
-                                              OnSizePropertyChanged));
+                                              OnSizeChanged));
 
         /// <summary>
         /// Sets <see cref="SizeProperty"/> for <paramref name="element"/>.
@@ -37,12 +40,13 @@ namespace Fluent
         /// <summary>
         /// Gets <see cref="SizeProperty"/> for <paramref name="element"/>.
         /// </summary>
+        //[AttachedPropertyBrowsableForType(typeof(IRibbonControl))]
         public static RibbonControlSize GetSize(DependencyObject element)
         {
             return (RibbonControlSize)element.GetValue(SizeProperty);
         }
 
-        private static void OnSizePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        private static void OnSizeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var sink = d as IRibbonSizeChangedSink;
 
@@ -65,7 +69,7 @@ namespace Fluent
                                               FrameworkPropertyMetadataOptions.AffectsRender |
                                               FrameworkPropertyMetadataOptions.AffectsParentArrange |
                                               FrameworkPropertyMetadataOptions.AffectsParentMeasure,
-                                              OnSizeDefinitionPropertyChanged));
+                                              OnSizeDefinitionChanged));
 
         /// <summary>
         /// Sets <see cref="SizeDefinitionProperty"/> for <paramref name="element"/>.
@@ -78,13 +82,14 @@ namespace Fluent
         /// <summary>
         /// Gets <see cref="SizeDefinitionProperty"/> for <paramref name="element"/>.
         /// </summary>
+        //[AttachedPropertyBrowsableForType(typeof(IRibbonControl))]
         public static RibbonControlSizeDefinition GetSizeDefinition(DependencyObject element)
         {
             return (RibbonControlSizeDefinition)element.GetValue(SizeDefinitionProperty);
         }
 
         // Handles RibbonSizeDefinitionProperty changes
-        internal static void OnSizeDefinitionPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        internal static void OnSizeDefinitionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             // Find parent group box
             var groupBox = FindParentRibbonGroupBox(d);
@@ -94,17 +99,17 @@ namespace Fluent
         }
 
         // Finds parent group box
-        internal static RibbonGroupBox FindParentRibbonGroupBox(DependencyObject element)
+        internal static RibbonGroupBox? FindParentRibbonGroupBox(DependencyObject element)
         {
             var currentElement = element;
-            RibbonGroupBox groupBox;
+            RibbonGroupBox? groupBox;
 
-            while ((groupBox = currentElement as RibbonGroupBox) == null)
+            while ((groupBox = currentElement as RibbonGroupBox) is null)
             {
                 currentElement = VisualTreeHelper.GetParent(currentElement)
                     ?? LogicalTreeHelper.GetParent(currentElement);
 
-                if (currentElement == null)
+                if (currentElement is null)
                 {
                     break;
                 }
@@ -124,29 +129,15 @@ namespace Fluent
             SetSize(element, GetSizeDefinition(element).GetSize(state));
         }
 
-        #endregion
-
-        #region AppTheme
-
         /// <summary>
-        /// <see cref="DependencyProperty"/> for specifying AppTheme.
+        /// Sets appropriate size of the control according to the
+        /// given ribbon control size and control's size definition
         /// </summary>
-        public static readonly DependencyProperty AppThemeProperty = DependencyProperty.RegisterAttached("AppTheme", typeof(string), typeof(RibbonProperties), new PropertyMetadata(default(string)));
-
-        /// <summary>
-        /// Sets <see cref="AppThemeProperty"/> for <paramref name="element"/>.
-        /// </summary>
-        public static void SetAppTheme(DependencyObject element, string value)
+        /// <param name="element">UI Element</param>
+        /// <param name="size">Ribbon control size before applying SizeDefinition</param>
+        public static void SetAppropriateSize(DependencyObject element, RibbonControlSize size)
         {
-            element.SetValue(AppThemeProperty, value);
-        }
-
-        /// <summary>
-        /// Gets <see cref="AppThemeProperty"/> for <paramref name="element"/>.
-        /// </summary>
-        public static string GetAppTheme(DependencyObject element)
-        {
-            return (string)element.GetValue(AppThemeProperty);
+            SetSize(element, GetSizeDefinition(element).GetSize(size));
         }
 
         #endregion
@@ -161,7 +152,7 @@ namespace Fluent
         /// <summary>
         /// Sets <see cref="MouseOverBackgroundProperty"/> for <paramref name="element"/>.
         /// </summary>
-        public static void SetMouseOverBackground(DependencyObject element, Brush value)
+        public static void SetMouseOverBackground(DependencyObject element, Brush? value)
         {
             element.SetValue(MouseOverBackgroundProperty, value);
         }
@@ -169,7 +160,8 @@ namespace Fluent
         /// <summary>
         /// Gets <see cref="MouseOverBackgroundProperty"/> for <paramref name="element"/>.
         /// </summary>
-        public static Brush GetMouseOverBackground(DependencyObject element)
+        //[AttachedPropertyBrowsableForType(typeof(IRibbonControl))]
+        public static Brush? GetMouseOverBackground(DependencyObject element)
         {
             return (Brush)element.GetValue(MouseOverBackgroundProperty);
         }
@@ -186,7 +178,7 @@ namespace Fluent
         /// <summary>
         /// Sets <see cref="MouseOverForegroundProperty"/> for <paramref name="element"/>.
         /// </summary>
-        public static void SetMouseOverForeground(DependencyObject element, Brush value)
+        public static void SetMouseOverForeground(DependencyObject element, Brush? value)
         {
             element.SetValue(MouseOverForegroundProperty, value);
         }
@@ -194,9 +186,10 @@ namespace Fluent
         /// <summary>
         /// Gets <see cref="MouseOverForegroundProperty"/> for <paramref name="element"/>.
         /// </summary>
-        public static Brush GetMouseOverForeground(DependencyObject element)
+        //[AttachedPropertyBrowsableForType(typeof(IRibbonControl))]
+        public static Brush? GetMouseOverForeground(DependencyObject element)
         {
-            return (Brush)element.GetValue(MouseOverForegroundProperty);
+            return (Brush?)element.GetValue(MouseOverForegroundProperty);
         }
 
         #endregion
@@ -211,7 +204,7 @@ namespace Fluent
         /// <summary>
         /// Sets <see cref="IsSelectedBackgroundProperty"/> for <paramref name="element"/>.
         /// </summary>
-        public static void SetIsSelectedBackground(DependencyObject element, Brush value)
+        public static void SetIsSelectedBackground(DependencyObject element, Brush? value)
         {
             element.SetValue(IsSelectedBackgroundProperty, value);
         }
@@ -219,9 +212,88 @@ namespace Fluent
         /// <summary>
         /// Gets <see cref="IsSelectedBackgroundProperty"/> for <paramref name="element"/>.
         /// </summary>
-        public static Brush GetIsSelectedBackground(DependencyObject element)
+        //[AttachedPropertyBrowsableForType(typeof(IRibbonControl))]
+        public static Brush? GetIsSelectedBackground(DependencyObject element)
         {
-            return (Brush)element.GetValue(IsSelectedBackgroundProperty);
+            return (Brush?)element.GetValue(IsSelectedBackgroundProperty);
+        }
+
+        #endregion
+
+        #region LastVisibleWidthProperty
+
+        /// <summary>
+        /// Stores the last visible width of an element.
+        /// </summary>
+        public static readonly DependencyProperty LastVisibleWidthProperty = DependencyProperty.RegisterAttached(
+            "LastVisibleWidth", typeof(double), typeof(RibbonProperties), new PropertyMetadata(DoubleBoxes.Zero));
+
+        /// <summary>Helper for setting <see cref="LastVisibleWidthProperty"/> on <paramref name="element"/>.</summary>
+        public static void SetLastVisibleWidth(DependencyObject element, double value)
+        {
+            element.SetValue(LastVisibleWidthProperty, value);
+        }
+
+        /// <summary>Helper for getting <see cref="LastVisibleWidthProperty"/> on <paramref name="element"/>.</summary>
+        public static double GetLastVisibleWidth(DependencyObject? element)
+        {
+#pragma warning disable WPF0042 // Avoid side effects in CLR accessors.
+            if (element is null)
+            {
+                return 0;
+            }
+#pragma warning restore WPF0042 // Avoid side effects in CLR accessors.
+
+            return (double)element.GetValue(LastVisibleWidthProperty);
+        }
+
+        #endregion LastVisibleWidthProperty
+
+        #region IsElementInQuickAccessToolBarProperty
+
+        /// <summary>
+        /// Defines if the element is part of the <see cref="QuickAccessToolBar"/>.
+        /// </summary>
+        public static readonly DependencyProperty IsElementInQuickAccessToolBarProperty = DependencyProperty.RegisterAttached(
+            "IsElementInQuickAccessToolBar", typeof(bool), typeof(RibbonProperties), new PropertyMetadata(BooleanBoxes.FalseBox));
+
+        /// <summary>Helper for setting <see cref="IsElementInQuickAccessToolBarProperty"/> on <paramref name="element"/>.</summary>
+        public static void SetIsElementInQuickAccessToolBar(DependencyObject element, bool value)
+        {
+            element.SetValue(IsElementInQuickAccessToolBarProperty, BooleanBoxes.Box(value));
+        }
+
+        /// <summary>Helper for getting <see cref="IsElementInQuickAccessToolBarProperty"/> on <paramref name="element"/>.</summary>
+        public static bool GetIsElementInQuickAccessToolBar(DependencyObject element)
+        {
+            return (bool)element.GetValue(IsElementInQuickAccessToolBarProperty);
+        }
+
+        #endregion IsElementInQuickAccessToolBarProperty
+
+        #region DesiredIconSize
+
+#pragma warning disable WPF0010
+        /// <summary>
+        /// Defines the desired icon size for the element.
+        /// </summary>
+        public static readonly DependencyProperty IconSizeProperty = DependencyProperty.RegisterAttached(
+            "IconSize", typeof(IconSize), typeof(RibbonProperties), new PropertyMetadata(IconSizeBoxes.Small));
+#pragma warning restore WPF0010
+
+        /// <summary>Helper for setting <see cref="IconSizeProperty"/> on <paramref name="element"/>.</summary>
+        public static void SetIconSize(DependencyObject element, IconSize value)
+        {
+            element.SetValue(IconSizeProperty, IconSizeBoxes.Box(value));
+        }
+
+        /// <summary>Helper for getting <see cref="IconSizeProperty"/> from <paramref name="element"/>.</summary>
+        [AttachedPropertyBrowsableForType(typeof(IRibbonControl))]
+        [AttachedPropertyBrowsableForType(typeof(IMediumIconProvider))]
+        [AttachedPropertyBrowsableForType(typeof(ILargeIconProvider))]
+        public static IconSize GetIconSize(DependencyObject element)
+        {
+            return (IconSize)element.GetValue(IconSizeProperty);
         }
 
         #endregion

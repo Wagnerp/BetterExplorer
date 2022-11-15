@@ -14,6 +14,21 @@ namespace Fluent
     /// </summary>
     public class RibbonGroupsContainer : Panel, IScrollInfo
     {
+        private struct MeasureCache
+        {
+            public MeasureCache(Size availableSize, Size desiredSize)
+            {
+                this.AvailableSize = availableSize;
+                this.DesiredSize = desiredSize;
+            }
+
+            public Size AvailableSize { get; }
+
+            public Size DesiredSize { get; }
+        }
+
+        private MeasureCache measureCache;
+
         #region Reduce Order
 
         /// <summary>
@@ -23,21 +38,18 @@ namespace Fluent
         /// Enclose in parentheses as (Control.Name) to reduce/enlarge
         /// scalable elements in the given group
         /// </summary>
-        public string ReduceOrder
+        public string? ReduceOrder
         {
-            get { return (string)this.GetValue(ReduceOrderProperty); }
+            get { return (string?)this.GetValue(ReduceOrderProperty); }
             set { this.SetValue(ReduceOrderProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for ReduceOrder.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="ReduceOrder"/> dependency property.</summary>
         public static readonly DependencyProperty ReduceOrderProperty =
-            DependencyProperty.Register(nameof(ReduceOrder), typeof(string), typeof(RibbonGroupsContainer), new PropertyMetadata(ReduceOrderPropertyChanged));
+            DependencyProperty.Register(nameof(ReduceOrder), typeof(string), typeof(RibbonGroupsContainer), new PropertyMetadata(OnReduceOrderChanged));
 
         // handles ReduseOrder property changed
-        private static void ReduceOrderPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        private static void OnReduceOrderChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var ribbonPanel = (RibbonGroupsContainer)d;
 
@@ -46,7 +58,7 @@ namespace Fluent
                 ribbonPanel.IncreaseGroupBoxSize(ribbonPanel.reduceOrder[i]);
             }
 
-            ribbonPanel.reduceOrder = ((string)e.NewValue).Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            ribbonPanel.reduceOrder = (((string?)e.NewValue) ?? string.Empty).Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
             var newReduceOrderIndex = ribbonPanel.reduceOrder.Length - 1;
             ribbonPanel.reduceOrderIndex = newReduceOrderIndex;
 
@@ -77,29 +89,20 @@ namespace Fluent
 
         #region Layout Overridings
 
-        /// <summary>
-        ///   Returns a collection of the panel's UIElements.
-        /// </summary>
-        /// <param name="logicalParent">The logical parent of the collection to be created.</param>
-        /// <returns>Returns an ordered collection of elements that have the specified logical parent.</returns>
+        /// <inheritdoc />
         protected override UIElementCollection CreateUIElementCollection(FrameworkElement logicalParent)
         {
             return new UIElementCollection(this, /*Parent as FrameworkElement*/this);
         }
 
-        /// <summary>
-        /// Measures all of the RibbonGroupBox, and resize them appropriately
-        /// to fit within the available room
-        /// </summary>
-        /// <param name="availableSize">The available size that this element can give to child elements.</param>
-        /// <returns>The size that the groups container determines it needs during
-        /// layout, based on its calculations of child element sizes.
-        /// </returns>
+        /// <inheritdoc />
         protected override Size MeasureOverride(Size availableSize)
         {
             var desiredSize = this.GetChildrenDesiredSizeIntermediate();
 
-            if (this.reduceOrder.Length == 0)
+            if (this.reduceOrder.Length == 0
+                // Check cached measure to prevent "flicker"
+                || (this.measureCache.AvailableSize == availableSize && this.measureCache.DesiredSize == desiredSize))
             {
                 this.VerifyScrollData(availableSize.Width, desiredSize.Width);
                 return desiredSize;
@@ -141,7 +144,7 @@ namespace Fluent
             foreach (var item in this.InternalChildren)
             {
                 var groupBox = item as RibbonGroupBox;
-                if (groupBox == null)
+                if (groupBox is null)
                 {
                     continue;
                 }
@@ -149,22 +152,25 @@ namespace Fluent
                 if (groupBox.State != groupBox.StateIntermediate
                     || groupBox.Scale != groupBox.ScaleIntermediate)
                 {
-                    groupBox.SuppressCacheReseting = true;
-                    groupBox.State = groupBox.StateIntermediate;
-                    groupBox.Scale = groupBox.ScaleIntermediate;
-                    groupBox.InvalidateLayout();
-                    groupBox.Measure(new Size(double.PositiveInfinity, availableSize.Height));
-                    groupBox.SuppressCacheReseting = false;
+                    using (groupBox.CacheResetGuard.Start())
+                    {
+                        groupBox.State = groupBox.StateIntermediate;
+                        groupBox.Scale = groupBox.ScaleIntermediate;
+                        groupBox.InvalidateLayout();
+                        groupBox.Measure(new Size(double.PositiveInfinity, availableSize.Height));
+                    }
                 }
 
                 // Something wrong with cache?
                 if (groupBox.DesiredSizeIntermediate != groupBox.DesiredSize)
                 {
-                    // Reset cache and reinvoke masure
+                    // Reset cache and reinvoke measure
                     groupBox.ClearCache();
                     return this.MeasureOverride(availableSize);
                 }
             }
+
+            this.measureCache = new MeasureCache(availableSize, desiredSize);
 
             this.VerifyScrollData(availableSize.Width, desiredSize.Width);
             return desiredSize;
@@ -175,10 +181,10 @@ namespace Fluent
             double width = 0;
             double height = 0;
 
-            foreach (UIElement child in this.InternalChildren)
+            foreach (UIElement? child in this.InternalChildren)
             {
                 var groupBox = child as RibbonGroupBox;
-                if (groupBox == null)
+                if (groupBox is null)
                 {
                     continue;
                 }
@@ -197,7 +203,7 @@ namespace Fluent
             var groupBox = this.FindGroup(name);
             var scale = name.StartsWith("(", StringComparison.OrdinalIgnoreCase);
 
-            if (groupBox == null)
+            if (groupBox is null)
             {
                 return;
             }
@@ -208,9 +214,7 @@ namespace Fluent
             }
             else
             {
-                groupBox.StateIntermediate = groupBox.StateIntermediate != RibbonGroupBoxState.Large
-                    ? groupBox.StateIntermediate - 1
-                    : RibbonGroupBoxState.Large;
+                groupBox.StateIntermediate = groupBox.StateDefinition.EnlargeState(groupBox.StateIntermediate);
             }
         }
 
@@ -220,7 +224,7 @@ namespace Fluent
             var groupBox = this.FindGroup(name);
             var scale = name.StartsWith("(", StringComparison.OrdinalIgnoreCase);
 
-            if (groupBox == null)
+            if (groupBox is null)
             {
                 return;
             }
@@ -231,22 +235,20 @@ namespace Fluent
             }
             else
             {
-                groupBox.StateIntermediate = groupBox.StateIntermediate != RibbonGroupBoxState.Collapsed
-                    ? groupBox.StateIntermediate + 1
-                    : groupBox.StateIntermediate;
+                groupBox.StateIntermediate = groupBox.StateDefinition.ReduceState(groupBox.StateIntermediate);
             }
         }
 
-        private RibbonGroupBox FindGroup(string name)
+        private RibbonGroupBox? FindGroup(string name)
         {
             if (name.StartsWith("(", StringComparison.OrdinalIgnoreCase))
             {
                 name = name.Substring(1, name.Length - 2);
             }
 
-            foreach (FrameworkElement child in this.InternalChildren)
+            foreach (FrameworkElement? child in this.InternalChildren)
             {
-                if (child.Name == name)
+                if (child?.Name == name)
                 {
                     return child as RibbonGroupBox;
                 }
@@ -255,12 +257,7 @@ namespace Fluent
             return null;
         }
 
-        /// <summary>
-        /// When overridden in a derived class, positions child elements and determines
-        /// a size for a System.Windows.FrameworkElement derived class.
-        /// </summary>
-        /// <param name="finalSize">The final area within the parent that this element should use to arrange itself and its children.</param>
-        /// <returns>The actual size used.</returns>
+        /// <inheritdoc />
         protected override Size ArrangeOverride(Size finalSize)
         {
             var finalRect = new Rect(finalSize)
@@ -268,8 +265,13 @@ namespace Fluent
                 X = -this.HorizontalOffset
             };
 
-            foreach (UIElement item in this.InternalChildren)
+            foreach (UIElement? item in this.InternalChildren)
             {
+                if (item is null)
+                {
+                    continue;
+                }
+
                 finalRect.Width = item.DesiredSize.Width;
                 finalRect.Height = Math.Max(finalSize.Height, item.DesiredSize.Height);
                 item.Arrange(finalRect);
@@ -283,83 +285,62 @@ namespace Fluent
 
         #region IScrollInfo Members
 
-        /// <summary>
-        /// Gets or sets a System.Windows.Controls.ScrollViewer element that controls scrolling behavior.
-        /// </summary>
-        public ScrollViewer ScrollOwner
+        /// <inheritdoc />
+        public ScrollViewer? ScrollOwner
         {
             get { return this.ScrollData.ScrollOwner; }
             set { this.ScrollData.ScrollOwner = value; }
         }
 
-        /// <summary>
-        /// Sets the amount of horizontal offset.
-        /// </summary>
-        /// <param name="offset">The degree to which content is horizontally offset from the containing viewport.</param>
+        /// <inheritdoc />
         public void SetHorizontalOffset(double offset)
         {
-            var newValue = CoerceOffset(ValidateInputOffset(offset, nameof(this.HorizontalOffset)), this.scrollData.ExtentWidth, this.scrollData.ViewportWidth);
+            var newValue = CoerceOffset(ValidateInputOffset(offset, nameof(this.HorizontalOffset)), this.ScrollData.ExtentWidth, this.ScrollData.ViewportWidth);
 
             if (DoubleUtil.AreClose(this.ScrollData.OffsetX, newValue) == false)
             {
-                this.scrollData.OffsetX = newValue;
+                this.ScrollData.OffsetX = newValue;
                 this.InvalidateArrange();
             }
         }
 
-        /// <summary>
-        /// Gets the horizontal size of the extent.
-        /// </summary>
+        /// <inheritdoc />
         public double ExtentWidth
         {
             get { return this.ScrollData.ExtentWidth; }
         }
 
-        /// <summary>
-        /// Gets the horizontal offset of the scrolled content.
-        /// </summary>
+        /// <inheritdoc />
         public double HorizontalOffset
         {
             get { return this.ScrollData.OffsetX; }
         }
 
-        /// <summary>
-        /// Gets the horizontal size of the viewport for this content.
-        /// </summary>
+        /// <inheritdoc />
         public double ViewportWidth
         {
             get { return this.ScrollData.ViewportWidth; }
         }
 
-        /// <summary>
-        /// Scrolls left within content by one logical unit.
-        /// </summary>
+        /// <inheritdoc />
         public void LineLeft()
         {
             this.SetHorizontalOffset(this.HorizontalOffset - 16.0);
         }
 
-        /// <summary>
-        /// Scrolls right within content by one logical unit.
-        /// </summary>
+        /// <inheritdoc />
         public void LineRight()
         {
             this.SetHorizontalOffset(this.HorizontalOffset + 16.0);
         }
 
-        /// <summary>
-        /// Forces content to scroll until the coordinate space of a System.Windows.Media.Visual object is visible.
-        /// This is optimized for horizontal scrolling only
-        /// </summary>
-        /// <param name="visual">A System.Windows.Media.Visual that becomes visible.</param>
-        /// <param name="rectangle">A bounding rectangle that identifies the coordinate space to make visible.</param>
-        /// <returns>A System.Windows.Rect that is visible.</returns>
+        /// <inheritdoc />
         public Rect MakeVisible(Visual visual, Rect rectangle)
         {
             // We can only work on visuals that are us or children.
             // An empty rect has no size or position.  We can't meaningfully use it.
             if (rectangle.IsEmpty
-                || visual == null
+                || visual is null
                 || ReferenceEquals(visual, this)
                 || !this.IsAncestorOf(visual))
             {
@@ -508,18 +489,14 @@ namespace Fluent
         {
         }
 
-        /// <summary>
-        /// Gets or sets a value that indicates whether scrolling on the vertical axis is possible.
-        /// </summary>
+        /// <inheritdoc />
         public bool CanVerticallyScroll
         {
             get { return false; }
             set { }
         }
 
-        /// <summary>
-        /// Gets or sets a value that indicates whether scrolling on the horizontal axis is possible.
-        /// </summary>
+        /// <inheritdoc />
         public bool CanHorizontallyScroll
         {
             get { return true; }
@@ -560,7 +537,7 @@ namespace Fluent
         }
 
         // Scroll data info
-        private ScrollData scrollData;
+        private ScrollData? scrollData;
 
         // Validates input offset
         private static double ValidateInputOffset(double offset, string parameterName)
@@ -619,5 +596,32 @@ namespace Fluent
         }
 
         #endregion
+
+        // We have to reset the reduce order to it's initial value, clear all caches we keep here and invalidate measure/arrange
+#pragma warning disable CA1801 // Review unused parameters
+        internal void GroupBoxCacheClearedAndStateAndScaleResetted(RibbonGroupBox ribbonGroupBox)
+#pragma warning restore CA1801 // Review unused parameters
+        {
+            var ribbonPanel = this;
+
+            var newReduceOrderIndex = ribbonPanel.reduceOrder.Length - 1;
+            ribbonPanel.reduceOrderIndex = newReduceOrderIndex;
+
+            this.measureCache = default;
+
+            foreach (var item in this.InternalChildren)
+            {
+                var groupBox = item as RibbonGroupBox;
+                if (groupBox is null)
+                {
+                    continue;
+                }
+
+                groupBox.TryClearCacheAndResetStateAndScale();
+            }
+
+            ribbonPanel.InvalidateMeasure();
+            ribbonPanel.InvalidateArrange();
+        }
     }
 }

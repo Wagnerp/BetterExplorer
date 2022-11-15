@@ -14,20 +14,32 @@
     internal static class UIHelper
     {
         /// <summary>
+        /// Gets the first visual child of <paramref name="parent"/>.
+        /// If there are no visual children <c>null</c> is returned.
+        /// </summary>
+        /// <returns>The first visual child of <paramref name="parent"/> or <c>null</c> if there are no children.</returns>
+        public static DependencyObject? GetFirstVisualChild(DependencyObject parent)
+        {
+            var childrenCount = VisualTreeHelper.GetChildrenCount(parent);
+
+            return childrenCount == 0
+                       ? null
+                       : VisualTreeHelper.GetChild(parent, 0);
+        }
+
+        /// <summary>
         /// Tries to find immediate visual child of type <typeparamref name="T"/> which matches <paramref name="predicate"/>
         /// </summary>
         /// <returns>
         /// The visual child of type <typeparamref name="T"/> that matches <paramref name="predicate"/>.
         /// Returns <c>null</c> if no child matches.
         /// </returns>
-        public static T FindImmediateVisualChild<T>(DependencyObject parent, Predicate<T> predicate)
+        public static T? FindImmediateVisualChild<T>(DependencyObject parent, Predicate<T> predicate)
             where T : DependencyObject
         {
             foreach (var child in GetVisualChildren(parent))
             {
-                var obj = child as T;
-
-                if (obj != null
+                if (child is T obj
                     && predicate(obj))
                 {
                     return obj;
@@ -43,20 +55,18 @@
         /// <typeparam name="TChildItem">The type of visual child to find.</typeparam>
         /// <param name="parent">The parent element whose visual tree shall be walked down.</param>
         /// <returns>The first element of type TChildItem found in the visual tree is returned. If none is found, null is returned.</returns>
-        public static TChildItem FindVisualChild<TChildItem>(DependencyObject parent)
+        public static TChildItem? FindVisualChild<TChildItem>(DependencyObject parent)
             where TChildItem : DependencyObject
         {
             foreach (var child in GetVisualChildren(parent))
             {
-                var item = child as TChildItem;
-
-                if (item != null)
+                if (child is TChildItem item)
                 {
                     return item;
                 }
 
                 var childOfChild = FindVisualChild<TChildItem>(child);
-                if (childOfChild != null)
+                if (childOfChild is not null)
                 {
                     return childOfChild;
                 }
@@ -77,10 +87,7 @@
             {
                 var child = VisualTreeHelper.GetChild(parent, i);
 
-                if (child != null)
-                {
-                    yield return child;
-                }
+                yield return child;
             }
         }
 
@@ -90,34 +97,45 @@
         /// </summary>
         /// <returns>The found visual/logical parent or null.</returns>
         /// <remarks>This method searches further up the parent chain instead of just using the immediate parent.</remarks>
-        public static T GetParent<T>(DependencyObject element)
+        public static T? GetParent<T>(DependencyObject? element, Predicate<T>? filter = null)
             where T : DependencyObject
         {
-            if (element == null)
+            if (element is null)
             {
                 return null;
             }
 
-            var item = GetVisualParent(element);
-
-            while (item != null
-                && item is T == false)
             {
-                item = GetVisualParent(item);
+                var item = GetVisualParent(element);
+
+                while (item is not null)
+                {
+                    if (item is T variable
+                        && (filter?.Invoke(variable) ?? true))
+                    {
+                        return variable;
+                    }
+
+                    item = GetVisualParent(item) ?? LogicalTreeHelper.GetParent(item);
+                }
             }
 
-            if (item == null)
             {
-                item = LogicalTreeHelper.GetParent(element);
+                var item = LogicalTreeHelper.GetParent(element);
 
-                while (item != null &&
-                       item is T == false)
+                while (item is not null)
                 {
+                    if (item is T variable
+                        && (filter?.Invoke(variable) ?? true))
+                    {
+                        return variable;
+                    }
+
                     item = LogicalTreeHelper.GetParent(item);
                 }
             }
 
-            return (T)item;
+            return null;
         }
 
         /// <summary>
@@ -133,19 +151,18 @@
         /// Returns the visual parent of <paramref name="element"/>.
         /// This also works for <see cref="ContentElement"/> and <see cref="FrameworkContentElement"/>.
         /// </summary>
-        public static DependencyObject GetVisualParent(DependencyObject element)
+        public static DependencyObject? GetVisualParent(DependencyObject? element)
         {
-            if (element == null)
+            if (element is null)
             {
                 return null;
             }
 
-            var contentElement = element as ContentElement;
-            if (contentElement != null)
+            if (element is ContentElement contentElement)
             {
                 var parent = ContentOperations.GetParent(contentElement);
 
-                if (parent != null)
+                if (parent is not null)
                 {
                     return parent;
                 }
@@ -166,24 +183,48 @@
         /// <exception cref="T:System.ArgumentNullException">Raised when visual is null.</exception>
         public static AdornerLayer GetAdornerLayer(Visual visual)
         {
-            if (visual == null)
+            if (visual is null)
             {
                 throw new ArgumentNullException(nameof(visual));
             }
 
-            var decorator = visual as AdornerDecorator;
-            if (decorator != null)
+            if (visual is AdornerDecorator decorator)
             {
                 return decorator.AdornerLayer;
             }
 
-            var scrollContentPresenter = visual as ScrollContentPresenter;
-            if (scrollContentPresenter != null)
+            if (visual is ScrollContentPresenter scrollContentPresenter)
             {
                 return scrollContentPresenter.AdornerLayer;
             }
 
             return AdornerLayer.GetAdornerLayer(visual);
+        }
+
+        /// <summary>
+        /// Gets all containers from the <see cref="ItemContainerGenerator"/> of <paramref name="itemsControl"/>.
+        /// </summary>
+        /// <typeparam name="T">The desired container type.</typeparam>
+        public static IEnumerable<T> GetAllItemContainers<T>(ItemsControl itemsControl)
+            where T : class
+        {
+            return GetAllItemContainers<T>(itemsControl.ItemContainerGenerator);
+        }
+
+        /// <summary>
+        /// Gets all containers from <paramref name="itemContainerGenerator"/>.
+        /// </summary>
+        /// <typeparam name="T">The desired container type.</typeparam>
+        public static IEnumerable<T> GetAllItemContainers<T>(ItemContainerGenerator itemContainerGenerator)
+            where T : class
+        {
+            for (var i = 0; i < itemContainerGenerator.Items.Count; i++)
+            {
+                if (itemContainerGenerator.ContainerFromIndex(i) is T container)
+                {
+                    yield return container;
+                }
+            }
         }
     }
 }

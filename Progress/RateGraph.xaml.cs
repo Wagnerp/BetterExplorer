@@ -20,8 +20,11 @@ namespace RateBar {
     /// The polygon of points
     /// </summary>
     private Polygon polygon;
+    private Rectangle rectangle;
+    private Axis axis;
 
     private bool isloaded = false;
+    private Double _LastRate = 0d;
 
     /// <summary>
     /// The list of points
@@ -38,7 +41,10 @@ namespace RateBar {
       // Find the polygon once loaded, it's points
       // will be modified as we go along
       this.Loaded += (o, e) => {
+        this.ApplyTemplate();
         this.polygon = this.Template.FindName("graph", this) as Polygon;
+        this.rectangle = this.Template.FindName("graphBck", this) as Rectangle;
+        this.axis = this.Template.FindName("rcAxis", this) as Axis;
 
         // Ensure we have the bottom left point of a graph to fill correctly
         // and another point which will be moved
@@ -48,12 +54,20 @@ namespace RateBar {
       };
     }
 
+    public void SetBackGroundColor(Color brush) {
+      this.polygon.Fill = new SolidColorBrush(brush);
+      this.rectangle.Fill = new SolidColorBrush(Color.FromArgb(90, brush.R, brush.G, brush.B));
+      this.axis.Brush = new SolidColorBrush(Color.FromArgb(120, brush.R, brush.G, brush.B));
+      this.axis.UpdateUI();
+    }
+
     protected override void OnValueChanged(double oldValue, double newValue) {
       if (isloaded) {
         //this.polygon = this.Template.FindName("graph", this) as Polygon;
         // Modify the Maximum if the Rate exceeds it
-        if (this.Rate * 1.2 > this.RateMaximum)
-          this.RateMaximum = this.Rate * 1.2;
+        if (this.Rate * 1.5 > this.RateMaximum)
+          this.RateMaximum = this.Rate * 1.5;
+        this.RateMaximum = Math.Max(this.RateMaximum, this.Rate * 1.5);
 
         // Move the existing point along the X-axis, this ensures our fill works correctly.
         if (this.ratePoints.Count > 0)
@@ -62,8 +76,17 @@ namespace RateBar {
           this.ratePoints.Add(new Double[] { this.Value, 0 });
 
         // Add on the new point
+        //if (this.Rate > 0) {
+        //  if (this.ratePoints.Last()[1] == 0) {
+        //    this.ratePoints[0] = new Double[] { 0, this.Rate };
+        //  }
+        //}
         this.ratePoints.Add(new Double[] { this.Value, this.Rate });
+        if (this._LastRate == 0d) {
+          //this.ratePoints.Add(new Double[] {0, this.Rate});
+        }
 
+        this._LastRate = this.Rate;
 
         this.polygon.Points = new PointCollection(this.ratePoints.Select(dba => {
           // Don't adjust the height for the line that runs alone the bottom

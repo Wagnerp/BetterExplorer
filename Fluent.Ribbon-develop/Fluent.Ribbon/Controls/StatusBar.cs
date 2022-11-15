@@ -27,9 +27,7 @@ namespace Fluent
 
         #region Properties
 
-#if NET45 || NET462
-        private object currentItem;
-#endif
+        private object? currentItem;
 
         #endregion
 
@@ -69,21 +67,17 @@ namespace Fluent
 
         #region Overrides
 
-        /// <summary>
-        /// Creates or identifies the element that is used to display the given item.
-        /// </summary>
-        /// <returns>The element that is used to display the given item.</returns>
+        /// <inheritdoc />
         protected override DependencyObject GetContainerForItemOverride()
         {
-#if NET45 || NET462
             var item = this.currentItem;
             this.currentItem = null;
 
             if (this.UsesItemContainerTemplate
-                && item != null)
+                && item is not null)
             {
                 var dataTemplate = this.ItemContainerTemplateSelector.SelectTemplate(item, this);
-                if (dataTemplate != null)
+                if (dataTemplate is not null)
                 {
                     var dataTemplateContent = (object)dataTemplate.LoadContent();
                     if (dataTemplateContent is StatusBarItem
@@ -95,30 +89,24 @@ namespace Fluent
                     throw new InvalidOperationException("Invalid ItemContainer");
                 }
             }
-#endif
+
             return new StatusBarItem();
         }
 
-        /// <summary>
-        /// Determines if the specified item is (or is eligible to be) its own container.
-        /// </summary>
-        /// <param name="item">The item to check.</param>
-        /// <returns>true if the item is (or is eligible to be) its own container; otherwise, false.</returns>
+        /// <inheritdoc />
         protected override bool IsItemItsOwnContainerOverride(object item)
         {
             var isItemItsOwnContainerOverride = item is StatusBarItem || item is Separator;
 
-#if NET45 || NET462
             if (isItemItsOwnContainerOverride == false)
             {
                 this.currentItem = item;
             }
-#endif
 
             return isItemItsOwnContainerOverride;
         }
 
-        private void HandleItemContainerGeneratorStatusChanged(object sender, EventArgs e)
+        private void HandleItemContainerGeneratorStatusChanged(object? sender, EventArgs e)
         {
             if (this.ItemContainerGenerator.Status != GeneratorStatus.ContainersGenerated)
             {
@@ -128,10 +116,7 @@ namespace Fluent
             this.RunInDispatcherAsync(this.RecreateMenu, DispatcherPriority.Loaded);
         }
 
-        /// <summary>
-        /// Invoked when the <see cref="P:System.Windows.Controls.ItemsControl.Items"/> property changes.
-        /// </summary>
-        /// <param name="e">Information about the change.</param>
+        /// <inheritdoc />
         protected override void OnItemsChanged(NotifyCollectionChangedEventArgs e)
         {
             base.OnItemsChanged(e);
@@ -147,13 +132,12 @@ namespace Fluent
             {
                 case NotifyCollectionChangedAction.Add:
                 {
-                    foreach (var newItem in e.NewItems)
+                    foreach (var newItem in e.NewItems.NullSafe())
                     {
                         var container = this.ItemContainerGenerator.ContainerFromItem(newItem);
                         var containerIndex = this.ItemContainerGenerator.IndexFromContainer(container);
-                        var item = container as StatusBarItem;
 
-                        if (item != null)
+                        if (container is StatusBarItem item)
                         {
                             item.Checked += this.OnItemChecked;
                             item.Unchecked += this.OnItemUnchecked;
@@ -170,7 +154,7 @@ namespace Fluent
 
                 case NotifyCollectionChangedAction.Move:
                     {
-                        for (var i = 0; i < e.NewItems.Count; i++)
+                        for (var i = 0; i < e.NewItems?.Count; i++)
                         {
                             var menuItem = this.contextMenu.Items[e.OldStartingIndex + 1];
                             this.contextMenu.Items.Remove(e.OldStartingIndex + 1);
@@ -182,13 +166,15 @@ namespace Fluent
 
                 case NotifyCollectionChangedAction.Remove:
                     {
-                        for (var i = 0; i < e.OldItems.Count; i++)
+                        for (var i = 0; i < e.OldItems?.Count; i++)
                         {
-                            var menuItem = this.contextMenu.Items[e.OldStartingIndex + 1] as StatusBarMenuItem;
-                            if (menuItem != null)
+                            if (this.contextMenu.Items[e.OldStartingIndex + 1] is StatusBarMenuItem menuItem)
                             {
-                                menuItem.StatusBarItem.Checked += this.OnItemChecked;
-                                menuItem.StatusBarItem.Unchecked += this.OnItemUnchecked;
+                                if (menuItem.StatusBarItem is not null)
+                                {
+                                    menuItem.StatusBarItem.Checked -= this.OnItemChecked;
+                                    menuItem.StatusBarItem.Unchecked -= this.OnItemUnchecked;
+                                }
                             }
 
                             this.contextMenu.Items.RemoveAt(e.OldStartingIndex + 1);
@@ -199,22 +185,23 @@ namespace Fluent
 
                 case NotifyCollectionChangedAction.Replace:
                     {
-                        for (var i = 0; i < e.OldItems.Count; i++)
+                        for (var i = 0; i < e.OldItems?.Count; i++)
                         {
-                            var menuItem = this.contextMenu.Items[e.OldStartingIndex + 1] as StatusBarMenuItem;
-                            if (menuItem != null)
+                            if (this.contextMenu.Items[e.OldStartingIndex + 1] is StatusBarMenuItem menuItem)
                             {
-                                menuItem.StatusBarItem.Checked += this.OnItemChecked;
-                                menuItem.StatusBarItem.Unchecked += this.OnItemUnchecked;
+                                if (menuItem.StatusBarItem is not null)
+                                {
+                                    menuItem.StatusBarItem.Checked -= this.OnItemChecked;
+                                    menuItem.StatusBarItem.Unchecked -= this.OnItemUnchecked;
+                                }
                             }
 
                             this.contextMenu.Items.RemoveAt(e.OldStartingIndex + 1);
                         }
 
-                        for (var i = 0; i < e.NewItems.Count; i++)
+                        for (var i = 0; i < e.NewItems?.Count; i++)
                         {
-                            var item = this.ItemContainerGenerator.ContainerFromItem(e.NewItems[i]) as StatusBarItem;
-                            if (item != null)
+                            if (this.ItemContainerGenerator.ContainerFromItem(e.NewItems[i]) is StatusBarItem item)
                             {
                                 item.Checked += this.OnItemChecked;
                                 item.Unchecked += this.OnItemUnchecked;
@@ -258,13 +245,21 @@ namespace Fluent
 
             // Adding header separator
             this.contextMenu.Items.Add(new GroupSeparatorMenuItem());
-            RibbonControl.Bind(RibbonLocalization.Current.Localization, this.contextMenu.Items[0] as FrameworkElement, nameof(RibbonLocalizationBase.CustomizeStatusBar), HeaderedItemsControl.HeaderProperty, BindingMode.OneWay);
+            var target = this.contextMenu.Items[0] as FrameworkElement;
+
+            if (target is not null)
+            {
+                RibbonControl.Bind(RibbonLocalization.Current.Localization, target, nameof(RibbonLocalizationBase.CustomizeStatusBar), HeaderedItemsControl.HeaderProperty, BindingMode.OneWay);
+            }
 
             for (var i = 0; i < this.Items.Count; i++)
             {
-                var item = this.ItemContainerGenerator.ContainerFromItem(this.Items[i]) as StatusBarItem;
-                if (item != null)
+                if (this.ItemContainerGenerator.ContainerFromItem(this.Items[i]) is StatusBarItem item)
                 {
+                    // Prevent double event handler
+                    item.Checked -= this.OnItemChecked;
+                    item.Unchecked -= this.OnItemUnchecked;
+
                     item.Checked += this.OnItemChecked;
                     item.Unchecked += this.OnItemUnchecked;
                     this.contextMenu.Items.Add(new StatusBarMenuItem(item));
@@ -289,9 +284,8 @@ namespace Fluent
             foreach (var item in this.Items)
             {
                 var containerFromItem = this.ItemContainerGenerator.ContainerFromItem(item);
-                var separator = containerFromItem as Separator;
 
-                if (separator != null)
+                if (containerFromItem is Separator separator)
                 {
                     if (isPrevSeparator || isFirstVsible)
                     {

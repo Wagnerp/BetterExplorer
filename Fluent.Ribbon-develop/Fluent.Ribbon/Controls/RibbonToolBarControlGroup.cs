@@ -20,13 +20,10 @@ namespace Fluent
         public bool IsFirstInRow
         {
             get { return (bool)this.GetValue(IsFirstInRowProperty); }
-            set { this.SetValue(IsFirstInRowProperty, value); }
+            set { this.SetValue(IsFirstInRowProperty, BooleanBoxes.Box(value)); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for IsFirstInRow.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="IsFirstInRow"/> dependency property.</summary>
         public static readonly DependencyProperty IsFirstInRowProperty =
             DependencyProperty.Register(nameof(IsFirstInRow), typeof(bool), typeof(RibbonToolBarControlGroup), new PropertyMetadata(BooleanBoxes.TrueBox));
 
@@ -36,13 +33,10 @@ namespace Fluent
         public bool IsLastInRow
         {
             get { return (bool)this.GetValue(IsLastInRowProperty); }
-            set { this.SetValue(IsLastInRowProperty, value); }
+            set { this.SetValue(IsLastInRowProperty, BooleanBoxes.Box(value)); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for IsFirstInRow.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="IsLastInRow"/> dependency property.</summary>
         public static readonly DependencyProperty IsLastInRowProperty =
             DependencyProperty.Register(nameof(IsLastInRow), typeof(bool), typeof(RibbonToolBarControlGroup), new PropertyMetadata(BooleanBoxes.TrueBox));
 

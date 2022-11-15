@@ -1,3 +1,4 @@
+#nullable enable
 // ReSharper disable once CheckNamespace
 namespace Fluent
 {
@@ -17,9 +18,9 @@ namespace Fluent
         /// This enables animation, styling, binding, etc...
         /// </summary>
         public static readonly DependencyProperty KeysProperty =
-            DependencyProperty.RegisterAttached("Keys", typeof(string), typeof(KeyTip), new PropertyMetadata(KeysPropertyChanged));
+            DependencyProperty.RegisterAttached("Keys", typeof(string), typeof(KeyTip), new PropertyMetadata(OnKeysChanged));
 
-        private static void KeysPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        private static void OnKeysChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
         }
 
@@ -28,7 +29,7 @@ namespace Fluent
         /// </summary>
         /// <param name="element">The given element</param>
         /// <param name="value">Value</param>
-        public static void SetKeys(DependencyObject element, string value)
+        public static void SetKeys(DependencyObject element, string? value)
         {
             element.SetValue(KeysProperty, value);
         }
@@ -41,9 +42,9 @@ namespace Fluent
         [AttachedPropertyBrowsableForChildren(IncludeDescendants = true)]
         [System.ComponentModel.Category("KeyTips")]
         [System.ComponentModel.Description("Key sequence for the given element")]
-        public static string GetKeys(DependencyObject element)
+        public static string? GetKeys(DependencyObject element)
         {
-            return (string)element.GetValue(KeysProperty);
+            return (string?)element.GetValue(KeysProperty);
         }
 
         #endregion
@@ -65,7 +66,7 @@ namespace Fluent
         /// <param name="value">Value</param>
         public static void SetAutoPlacement(DependencyObject element, bool value)
         {
-            element.SetValue(AutoPlacementProperty, value);
+            element.SetValue(AutoPlacementProperty, BooleanBoxes.Box(value));
         }
 
         /// <summary>

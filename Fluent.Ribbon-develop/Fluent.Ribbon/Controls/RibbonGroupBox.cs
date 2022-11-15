@@ -4,9 +4,10 @@ namespace Fluent
     using System;
     using System.Collections;
     using System.Collections.Generic;
+    using System.Collections.Specialized;
     using System.ComponentModel;
-    using System.Linq;
     using System.Windows;
+    using System.Windows.Automation.Peers;
     using System.Windows.Controls;
     using System.Windows.Controls.Primitives;
     using System.Windows.Data;
@@ -14,6 +15,9 @@ namespace Fluent
     using System.Windows.Media;
     using System.Windows.Media.Imaging;
     using System.Windows.Shapes;
+    using System.Windows.Threading;
+    using Fluent.Extensions;
+    using Fluent.Helpers;
     using Fluent.Internal;
     using Fluent.Internal.KnownBoxes;
 
@@ -22,19 +26,23 @@ namespace Fluent
     /// a RibbonTab.  These groups can resize its content
     /// </summary>
     [TemplatePart(Name = "PART_DialogLauncherButton", Type = typeof(Button))]
+    [TemplatePart(Name = "PART_HeaderContentControl", Type = typeof(ContentControl))]
+    [TemplatePart(Name = "PART_CollapsedHeaderContentControl", Type = typeof(ContentControl))]
     [TemplatePart(Name = "PART_Popup", Type = typeof(Popup))]
     [TemplatePart(Name = "PART_UpPanel", Type = typeof(Panel))]
-    public class RibbonGroupBox : ItemsControl, IQuickAccessItemProvider, IDropDownControl, IKeyTipedControl, IHeaderedControl
+    [TemplatePart(Name = "PART_ParentPanel", Type = typeof(Panel))]
+    [TemplatePart(Name = "PART_SnappedImage", Type = typeof(Image))]
+    public class RibbonGroupBox : HeaderedItemsControl, IQuickAccessItemProvider, IDropDownControl, IKeyTipedControl, IHeaderedControl, ILogicalChildSupport, IMediumIconProvider
     {
         #region Fields
 
         // up part
-        private Panel upPanel;
+        private Panel? upPanel;
 
-        private Panel parentPanel;
+        private Panel? parentPanel;
 
         // Freezed image (created during snapping)
-        private Image snappedImage;
+        private Image? snappedImage;
 
         // Is visual currently snapped
         private bool isSnapped;
@@ -45,14 +53,24 @@ namespace Fluent
 
         #region Properties
 
-        #region KeyTip
+        /// <summary>
+        /// Get the <see cref="ContentControl"/> responsible for rendering the header.
+        /// </summary>
+        public ContentControl? HeaderContentControl { get; private set; }
 
         /// <summary>
-        /// Gets or sets KeyTip for element.
+        /// Get the <see cref="ContentControl"/> responsible for rendering the header when <see cref="State"/> is equal to <see cref="RibbonGroupBoxState.Collapsed"/>.
         /// </summary>
-        public string KeyTip
+        public ContentControl? CollapsedHeaderContentControl { get; private set; }
+
+        #endregion
+
+        #region KeyTip
+
+        /// <inheritdoc />
+        public string? KeyTip
         {
-            get { return (string)this.GetValue(KeyTipProperty); }
+            get { return (string?)this.GetValue(KeyTipProperty); }
             set { this.SetValue(KeyTipProperty, value); }
         }
 
@@ -64,15 +82,62 @@ namespace Fluent
 
         #endregion
 
-        /// <summary>
-        /// Gets drop down popup
-        /// </summary>
-        public Popup DropDownPopup { get; private set; }
+        #region Header-Options
 
         /// <summary>
-        /// Gets a value indicating whether context menu is opened
+        /// <see cref="DependencyProperty"/> for IsCollapsedHeaderContentPresenter.
         /// </summary>
+        public static readonly DependencyProperty IsCollapsedHeaderContentPresenterProperty = DependencyProperty.RegisterAttached("IsCollapsedHeaderContentPresenter", typeof(bool), typeof(RibbonGroupBox), new PropertyMetadata(BooleanBoxes.FalseBox));
+
+        /// <summary>
+        /// Sets the value of <see cref="IsCollapsedHeaderContentPresenterProperty"/>.
+        /// </summary>
+        public static void SetIsCollapsedHeaderContentPresenter(DependencyObject element, bool value)
+        {
+            element.SetValue(IsCollapsedHeaderContentPresenterProperty, BooleanBoxes.Box(value));
+        }
+
+        /// <summary>
+        /// Gets the value of <see cref="IsCollapsedHeaderContentPresenterProperty"/>.
+        /// </summary>
+        [AttachedPropertyBrowsableForType(typeof(RibbonGroupBox))]
+        public static bool GetIsCollapsedHeaderContentPresenter(DependencyObject element)
+        {
+            return (bool)element.GetValue(IsCollapsedHeaderContentPresenterProperty);
+        }
+
+        #endregion
+
+        /// <inheritdoc />
+        public Popup? DropDownPopup { get; private set; }
+
+        /// <inheritdoc />
         public bool IsContextMenuOpened { get; set; }
+
+        #region StateDefinition
+
+        /// <summary>
+        /// Gets or sets whether ribbon control click must close backstage
+        /// </summary>
+        public RibbonGroupBoxStateDefinition StateDefinition
+        {
+            get { return (RibbonGroupBoxStateDefinition)this.GetValue(StateDefinitionProperty); }
+            set { this.SetValue(StateDefinitionProperty, value); }
+        }
+
+        /// <summary>Identifies the <see cref="StateDefinition"/> dependency property.</summary>
+        public static readonly DependencyProperty StateDefinitionProperty =
+            DependencyProperty.Register(nameof(StateDefinition), typeof(RibbonGroupBoxStateDefinition), typeof(RibbonGroupBox),
+                new PropertyMetadata(new RibbonGroupBoxStateDefinition(null), OnStateDefinitionChanged));
+
+        // Handles StateDefinitionProperty changes
+        internal static void OnStateDefinitionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var box = (RibbonGroupBox)d;
+            box.TryClearCacheAndResetStateAndScaleAndNotifyParentRibbonGroupsContainer();
+        }
+
+        #endregion
 
         #region State
 
@@ -85,19 +150,16 @@ namespace Fluent
             set { this.SetValue(StateProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for State.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="State"/> dependency property.</summary>
         public static readonly DependencyProperty StateProperty =
-            DependencyProperty.Register(nameof(State), typeof(RibbonGroupBoxState), typeof(RibbonGroupBox), new PropertyMetadata(RibbonGroupBoxState.Large, StatePropertyChanged));
+            DependencyProperty.Register(nameof(State), typeof(RibbonGroupBoxState), typeof(RibbonGroupBox), new PropertyMetadata(RibbonGroupBoxState.Large, OnStateChanged));
 
         /// <summary>
         /// On state property changed
         /// </summary>
         /// <param name="d">Object</param>
         /// <param name="e">The event data</param>
-        private static void StatePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        private static void OnStateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var ribbonGroupBox = (RibbonGroupBox)d;
             ribbonGroupBox.updateChildSizesItemContainerGeneratorAction.QueueAction();
@@ -112,14 +174,31 @@ namespace Fluent
             foreach (var item in this.Items)
             {
                 var element = this.ItemContainerGenerator.ContainerFromItem(item);
-
-                if (element == null)
-                {
-                    continue;
-                }
-
-                RibbonProperties.SetAppropriateSize(element, groupBoxState);
+                this.UpdateChildSizesOfUIElement(element, groupBoxState);
             }
+        }
+
+        private void UpdateChildSizesOfUIElement(DependencyObject? element, RibbonGroupBoxState groupBoxState)
+        {
+            if (element is null)
+            {
+                return;
+            }
+
+            if (element is Panel panel)
+            {
+                for (var i = 0; i < panel.Children.Count; i++)
+                {
+                    this.UpdateChildSizesOfUIElement(panel.Children[i], groupBoxState);
+                }
+            }
+
+            if (element is ContentPresenter)
+            {
+                element = UIHelper.GetFirstVisualChild(element) ?? element;
+            }
+
+            RibbonProperties.SetAppropriateSize(element, groupBoxState);
         }
 
         #endregion
@@ -145,65 +224,96 @@ namespace Fluent
                 {
                     if (difference > 0)
                     {
-                        this.IncreaseScalableElement();
+                        this.EnlargeScalableItems();
                     }
                     else
                     {
-                        this.DecreaseScalableElement();
+                        this.ReduceScalableItems();
                     }
                 }
             }
         }
 
-        // Finds and increase size of all scalable elements in the given group box
-        private void IncreaseScalableElement()
+        private enum ScaleDirection
+        {
+            Enlarge,
+            Reduce
+        }
+
+        // Finds and increases size of all scalable elements in this group box
+        private void EnlargeScalableItems()
+        {
+            this.ScaleScaleableItems(ScaleDirection.Enlarge);
+        }
+
+        // Finds and decreases size of all scalable elements in this group box
+        private void ReduceScalableItems()
+        {
+            this.ScaleScaleableItems(ScaleDirection.Reduce);
+        }
+
+        private void ScaleScaleableItems(ScaleDirection scaleDirection)
         {
             foreach (var item in this.Items)
             {
-                var scalableRibbonControl = item as IScalableRibbonControl;
+                var scalableRibbonControl = this.ItemContainerGenerator.ContainerOrContainerContentFromItem<IScalableRibbonControl>(item);
 
-                scalableRibbonControl?.Enlarge();
+                if (scalableRibbonControl is null
+                    || (scalableRibbonControl is UIElement uiElement && uiElement.Visibility != Visibility.Visible))
+                {
+                    continue;
+                }
+
+                switch (scaleDirection)
+                {
+                    case ScaleDirection.Enlarge:
+                        scalableRibbonControl.Enlarge();
+                        break;
+
+                    case ScaleDirection.Reduce:
+                        scalableRibbonControl.Reduce();
+                        break;
+                }
             }
         }
 
-        private void OnScalableControlScaled(object sender, EventArgs e)
+        private void ResetScaleableItems()
+        {
+            foreach (var item in this.Items)
+            {
+                var scalableRibbonControl = this.ItemContainerGenerator.ContainerOrContainerContentFromItem<IScalableRibbonControl>(item);
+
+                if (scalableRibbonControl is null
+                    || (scalableRibbonControl is UIElement uiElement && uiElement.Visibility != Visibility.Visible))
+                {
+                    continue;
+                }
+
+                scalableRibbonControl.ResetScale();
+            }
+        }
+
+        private void OnScalableControlScaled(object? sender, EventArgs e)
         {
             this.TryClearCache();
-        }
-
-        private void TryClearCache()
-        {
-            if (!this.SuppressCacheReseting)
-            {
-                this.cachedMeasures.Clear();
-            }
         }
 
         /// <summary>
         /// Gets or sets whether to reset cache when scalable control is scaled
         /// </summary>
-        internal bool SuppressCacheReseting { get; set; }
+        internal ScopeGuard CacheResetGuard { get; }
 
-        // Finds and decrease size of all scalable elements in the given group box
-        private void DecreaseScalableElement()
+        private void UpdateScalableControlSubscritions(bool registerEvents)
         {
             foreach (var item in this.Items)
             {
-                var scalableRibbonControl = item as IScalableRibbonControl;
+                var scalableRibbonControl = this.ItemContainerGenerator.ContainerOrContainerContentFromItem<IScalableRibbonControl>(item);
 
-                scalableRibbonControl?.Reduce();
-            }
-        }
+                if (scalableRibbonControl is null)
+                {
+                    continue;
+                }
 
-        private void UpdateScalableControlSubscribing()
-        {
-            this.UpdateScalableControlSubscribing(true);
-        }
-
-        private void UpdateScalableControlSubscribing(bool registerEvents)
-        {
-            foreach (var scalableRibbonControl in this.Items.OfType<IScalableRibbonControl>())
-            {
                 // Always unregister first to ensure that we don't subscribe twice
                 scalableRibbonControl.Scaled -= this.OnScalableControlScaled;
 
@@ -216,32 +326,6 @@ namespace Fluent
 
         #endregion
 
-        #region Header
-
-        /// <summary>
-        /// Gets or sets group box header
-        /// </summary>
-        public string Header
-        {
-            get { return (string)this.GetValue(HeaderProperty); }
-            set { this.SetValue(HeaderProperty, value); }
-        }
-
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Header.  This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty HeaderProperty =
-            DependencyProperty.Register(nameof(Header), typeof(string), typeof(RibbonGroupBox), new PropertyMetadata());
-
-        object IHeaderedControl.Header
-        {
-            get { return this.Header; }
-
-            set { this.Header = (string)value; }
-        }
-
-        #endregion
-
         #region IsLauncherVisible
 
         /// <summary>
@@ -250,12 +334,10 @@ namespace Fluent
         public bool IsLauncherVisible
         {
             get { return (bool)this.GetValue(IsLauncherVisibleProperty); }
-            set { this.SetValue(IsLauncherVisibleProperty, value); }
+            set { this.SetValue(IsLauncherVisibleProperty, BooleanBoxes.Box(value)); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for IsLauncherVisible.  This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="IsLauncherVisible"/> dependency property.</summary>
         public static readonly DependencyProperty IsLauncherVisibleProperty =
             DependencyProperty.Register(nameof(IsLauncherVisible), typeof(bool), typeof(RibbonGroupBox), new PropertyMetadata(BooleanBoxes.FalseBox));
 
@@ -269,26 +351,23 @@ namespace Fluent
         [DisplayName("DialogLauncher Keys")]
         [Category("KeyTips")]
         [Description("Key tip keys for dialog launcher button")]
-        public string LauncherKeys
+        public string? LauncherKeys
         {
-            get { return (string)this.GetValue(DialogLauncherButtonKeyTipKeysProperty); }
-            set { this.SetValue(DialogLauncherButtonKeyTipKeysProperty, value); }
+            get { return (string?)this.GetValue(LauncherKeysProperty); }
+            set { this.SetValue(LauncherKeysProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for
-        /// LauncherKeys.  This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty DialogLauncherButtonKeyTipKeysProperty =
+        /// <summary>Identifies the <see cref="LauncherKeys"/> dependency property.</summary>
+        public static readonly DependencyProperty LauncherKeysProperty =
             DependencyProperty.Register(nameof(LauncherKeys),
-            typeof(string), typeof(RibbonGroupBox), new PropertyMetadata(OnDialogLauncherButtonKeyTipKeysChanged));
+            typeof(string), typeof(RibbonGroupBox), new PropertyMetadata(OnLauncherKeysChanged));
 
-        private static void OnDialogLauncherButtonKeyTipKeysChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        private static void OnLauncherKeysChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var ribbonGroupBox = (RibbonGroupBox)d;
-            if (ribbonGroupBox.LauncherButton != null)
+            if (ribbonGroupBox.LauncherButton is not null)
             {
-                ribbonGroupBox.LauncherButton.KeyTip = (string)e.NewValue;
+                ribbonGroupBox.LauncherButton.KeyTip = (string?)e.NewValue;
             }
         }
 
@@ -299,34 +378,30 @@ namespace Fluent
         /// <summary>
         /// Gets or sets launcher button icon
         /// </summary>
-        public object LauncherIcon
+        public object? LauncherIcon
         {
             get { return this.GetValue(LauncherIconProperty); }
             set { this.SetValue(LauncherIconProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for LauncherIcon.  This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="LauncherIcon"/> dependency property.</summary>
         public static readonly DependencyProperty LauncherIconProperty =
-            DependencyProperty.Register(nameof(LauncherIcon), typeof(object), typeof(RibbonGroupBox), new PropertyMetadata(OnIconChanged));
+            DependencyProperty.Register(nameof(LauncherIcon), typeof(object), typeof(RibbonGroupBox), new PropertyMetadata(LogicalChildSupportHelper.OnLogicalChildPropertyChanged));
 
         #endregion
 
-        #region LauncherIcon
+        #region LauncherText
 
         /// <summary>
         /// Gets or sets launcher button text
         /// </summary>
-        public string LauncherText
+        public string? LauncherText
         {
-            get { return (string)this.GetValue(LauncherTextProperty); }
+            get { return (string?)this.GetValue(LauncherTextProperty); }
             set { this.SetValue(LauncherTextProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for LauncherIcon.  This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="LauncherText"/> dependency property.</summary>
         public static readonly DependencyProperty LauncherTextProperty =
             DependencyProperty.Register(nameof(LauncherText), typeof(string), typeof(RibbonGroupBox), new PropertyMetadata());
 
@@ -340,11 +415,11 @@ namespace Fluent
         [Category("Action")]
         [Localizability(LocalizationCategory.NeverLocalize)]
         [Bindable(true)]
-        public ICommand LauncherCommand
+        public ICommand? LauncherCommand
         {
             get
             {
-                return (ICommand)this.GetValue(LauncherCommandProperty);
+                return (ICommand?)this.GetValue(LauncherCommandProperty);
             }
 
             set
@@ -359,7 +434,7 @@ namespace Fluent
         [Bindable(true)]
         [Localizability(LocalizationCategory.NeverLocalize)]
         [Category("Action")]
-        public object LauncherCommandParameter
+        public object? LauncherCommandParameter
         {
             get
             {
@@ -377,11 +452,11 @@ namespace Fluent
         /// </summary>
         [Bindable(true)]
         [Category("Action")]
-        public IInputElement LauncherCommandTarget
+        public IInputElement? LauncherCommandTarget
         {
             get
             {
-                return (IInputElement)this.GetValue(LauncherCommandTargetProperty);
+                return (IInputElement?)this.GetValue(LauncherCommandTargetProperty);
             }
 
             set
@@ -390,19 +465,13 @@ namespace Fluent
             }
         }
 
-        /// <summary>
-        /// Identifies the System.Windows.Controls.Primitives.ButtonBase.CommandParameter dependency property.
-        /// </summary>
+        /// <summary>Identifies the <see cref="LauncherCommandParameter"/> dependency property.</summary>
         public static readonly DependencyProperty LauncherCommandParameterProperty = DependencyProperty.Register(nameof(LauncherCommandParameter), typeof(object), typeof(RibbonGroupBox), new PropertyMetadata());
 
-        /// <summary>
-        /// Identifies the routed System.Windows.Controls.Primitives.ButtonBase.Command dependency property.
-        /// </summary>
+        /// <summary>Identifies the <see cref="LauncherCommand"/> dependency property.</summary>
         public static readonly DependencyProperty LauncherCommandProperty = DependencyProperty.Register(nameof(LauncherCommand), typeof(ICommand), typeof(RibbonGroupBox), new PropertyMetadata());
 
-        /// <summary>
-        /// Identifies the System.Windows.Controls.Primitives.ButtonBase.CommandTarget dependency property.
-        /// </summary>
+        /// <summary>Identifies the <see cref="LauncherCommandTarget"/> dependency property.</summary>
         public static readonly DependencyProperty LauncherCommandTargetProperty = DependencyProperty.Register(nameof(LauncherCommandTarget), typeof(IInputElement), typeof(RibbonGroupBox), new PropertyMetadata());
 
         #endregion
@@ -412,15 +481,13 @@ namespace Fluent
         /// <summary>
         /// Gets or sets launcher button tooltip
         /// </summary>
-        public object LauncherToolTip
+        public object? LauncherToolTip
         {
             get { return this.GetValue(LauncherToolTipProperty); }
             set { this.SetValue(LauncherToolTipProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for LauncherToolTip.  This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="LauncherToolTip"/> dependency property.</summary>
         public static readonly DependencyProperty LauncherToolTipProperty =
             DependencyProperty.Register(nameof(LauncherToolTip), typeof(object), typeof(RibbonGroupBox), new PropertyMetadata());
 
@@ -434,12 +501,10 @@ namespace Fluent
         public bool IsLauncherEnabled
         {
             get { return (bool)this.GetValue(IsLauncherEnabledProperty); }
-            set { this.SetValue(IsLauncherEnabledProperty, value); }
+            set { this.SetValue(IsLauncherEnabledProperty, BooleanBoxes.Box(value)); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for IsLauncherEnabled.  This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="IsLauncherEnabled"/> dependency property.</summary>
         public static readonly DependencyProperty IsLauncherEnabledProperty =
             DependencyProperty.Register(nameof(IsLauncherEnabled), typeof(bool), typeof(RibbonGroupBox), new PropertyMetadata(BooleanBoxes.TrueBox));
 
@@ -450,46 +515,41 @@ namespace Fluent
         /// <summary>
         /// Gets launcher button
         /// </summary>
-        public Button LauncherButton
+        public Button? LauncherButton
         {
-            get { return (Button)this.GetValue(LauncherButtonProperty); }
-            private set { this.SetValue(launcherButtonPropertyKey, value); }
+            get { return (Button?)this.GetValue(LauncherButtonProperty); }
+            private set { this.SetValue(LauncherButtonPropertyKey, value); }
         }
 
-        private static readonly DependencyPropertyKey launcherButtonPropertyKey =
+        // ReSharper disable once InconsistentNaming
+        private static readonly DependencyPropertyKey LauncherButtonPropertyKey =
             DependencyProperty.RegisterReadOnly(nameof(LauncherButton), typeof(Button), typeof(RibbonGroupBox), new PropertyMetadata());
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for LauncherButton.  This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty LauncherButtonProperty = launcherButtonPropertyKey.DependencyProperty;
+        /// <summary>Identifies the <see cref="LauncherButton"/> dependency property.</summary>
+        public static readonly DependencyProperty LauncherButtonProperty = LauncherButtonPropertyKey.DependencyProperty;
 
         #endregion
 
         #region IsOpen
 
-        /// <summary>
-        /// Gets or sets drop down popup visibility
-        /// </summary>
+        /// <inheritdoc />
         public bool IsDropDownOpen
         {
             get { return (bool)this.GetValue(IsDropDownOpenProperty); }
-            set { this.SetValue(IsDropDownOpenProperty, value); }
+            set { this.SetValue(IsDropDownOpenProperty, BooleanBoxes.Box(value)); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for IsOpen.  This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty IsDropDownOpenProperty = DependencyProperty.Register(nameof(IsDropDownOpen), typeof(bool), typeof(RibbonGroupBox), new PropertyMetadata(BooleanBoxes.FalseBox, OnIsOpenChanged, CoerceIsDropDownOpen));
+        /// <summary>Identifies the <see cref="IsDropDownOpen"/> dependency property.</summary>
+        public static readonly DependencyProperty IsDropDownOpenProperty = DependencyProperty.Register(nameof(IsDropDownOpen), typeof(bool), typeof(RibbonGroupBox), new PropertyMetadata(BooleanBoxes.FalseBox, OnIsDropDownOpenChanged, CoerceIsDropDownOpen));
 
-        private static object CoerceIsDropDownOpen(DependencyObject d, object basevalue)
+        private static object? CoerceIsDropDownOpen(DependencyObject d, object? basevalue)
         {
             var box = (RibbonGroupBox)d;
 
             if ((box.State != RibbonGroupBoxState.Collapsed)
                 && (box.State != RibbonGroupBoxState.QuickAccess))
             {
-                return false;
+                return BooleanBoxes.Box(false);
             }
 
             return basevalue;
@@ -499,77 +559,48 @@ namespace Fluent
 
         #region LogicalChildren
 
-        /// <summary>
-        /// Gets an enumerator for the logical child objects of
-        /// the System.Windows.Controls.ItemsControl object.
-        /// </summary>
-        protected override IEnumerator LogicalChildren
-        {
-            get
-            {
-                foreach (var item in this.Items)
-                {
-                    yield return item;
-                }
-
-                if (this.LauncherButton != null)
-                {
-                    yield return this.LauncherButton;
-                }
-            }
-        }
-
-        #endregion
-
         #region Icon
 
         /// <summary>
         /// Gets or sets icon
         /// </summary>
-        public object Icon
+        public object? Icon
         {
             get { return this.GetValue(IconProperty); }
             set { this.SetValue(IconProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Icon.  This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty IconProperty = RibbonControl.IconProperty.AddOwner(typeof(RibbonGroupBox), new PropertyMetadata(OnIconChanged));
+        /// <summary>Identifies the <see cref="Icon"/> dependency property.</summary>
+        public static readonly DependencyProperty IconProperty = RibbonControl.IconProperty.AddOwner(typeof(RibbonGroupBox), new PropertyMetadata(LogicalChildSupportHelper.OnLogicalChildPropertyChanged));
 
-        private static void OnIconChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        #endregion
+
+        #region MediumIcon
+
+        /// <inheritdoc />
+        public object? MediumIcon
         {
-            var element = (RibbonGroupBox)d;
-
-            var oldElement = e.OldValue as FrameworkElement;
-            if (oldElement != null)
-            {
-                element.RemoveLogicalChild(oldElement);
-            }
-
-            var newElement = e.NewValue as FrameworkElement;
-            if (newElement != null)
-            {
-                element.AddLogicalChild(newElement);
-            }
+            get { return this.GetValue(MediumIconProperty); }
+            set { this.SetValue(MediumIconProperty, value); }
         }
+
+        /// <summary>Identifies the <see cref="MediumIcon"/> dependency property.</summary>
+        public static readonly DependencyProperty MediumIconProperty = MediumIconProviderProperties.MediumIconProperty.AddOwner(typeof(RibbonGroupBox), new PropertyMetadata(LogicalChildSupportHelper.OnLogicalChildPropertyChanged));
 
         #endregion
 
         #region IsSeparatorVisible
 
         /// <summary>
-        /// Gets or sets wether the groupbox shows a separator.
+        /// Gets or sets whether the groupbox shows a separator.
         /// </summary>
         public bool IsSeparatorVisible
         {
             get { return (bool)this.GetValue(IsSeparatorVisibleProperty); }
-            set { this.SetValue(IsSeparatorVisibleProperty, value); }
+            set { this.SetValue(IsSeparatorVisibleProperty, BooleanBoxes.Box(value)); }
         }
 
-        /// <summary>
-        /// DependencyProperty for <see cref="IsSeparatorVisible"/>
-        /// </summary>
+        /// <summary>Identifies the <see cref="IsSeparatorVisible"/> dependency property.</summary>
         public static readonly DependencyProperty IsSeparatorVisibleProperty =
           DependencyProperty.Register(nameof(IsSeparatorVisible), typeof(bool), typeof(RibbonGroupBox), new PropertyMetadata(BooleanBoxes.TrueBox));
 
@@ -582,17 +613,13 @@ namespace Fluent
         /// <summary>
         /// Dialog launcher btton click event
         /// </summary>
-        public event RoutedEventHandler LauncherClick;
+        public event RoutedEventHandler? LauncherClick;
 
-        /// <summary>
-        /// Occurs when context menu is opened
-        /// </summary>
-        public event EventHandler DropDownOpened;
+        /// <inheritdoc />
+        public event EventHandler? DropDownOpened;
 
-        /// <summary>
-        /// Occurs when context menu is closed
-        /// </summary>
-        public event EventHandler DropDownClosed;
+        /// <inheritdoc />
+        public event EventHandler? DropDownClosed;
 
         #endregion
 
@@ -603,19 +630,33 @@ namespace Fluent
         /// </summary>
         static RibbonGroupBox()
         {
-            DefaultStyleKeyProperty.OverrideMetadata(typeof(RibbonGroupBox), new FrameworkPropertyMetadata(typeof(RibbonGroupBox)));
-            VisibilityProperty.AddOwner(typeof(RibbonGroupBox), new PropertyMetadata(OnVisibilityChanged));
+            var type = typeof(RibbonGroupBox);
 
-            PopupService.Attach(typeof(RibbonGroupBox));
+            DefaultStyleKeyProperty.OverrideMetadata(type, new FrameworkPropertyMetadata(type));
+            VisibilityProperty.AddOwner(type, new PropertyMetadata(OnVisibilityChanged));
+            FontSizeProperty.AddOwner(type, new FrameworkPropertyMetadata(OnFontSizeChanged));
+            FontFamilyProperty.AddOwner(type, new FrameworkPropertyMetadata(OnFontFamilyChanged));
 
-            ContextMenuService.Attach(typeof(RibbonGroupBox));
+            PopupService.Attach(type);
+            ContextMenuService.Attach(type);
         }
 
-        // Handles visibility changed
         private static void OnVisibilityChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            var box = d as RibbonGroupBox;
-            box?.ClearCache();
+            var box = (RibbonGroupBox)d;
+            box.TryClearCacheAndResetStateAndScaleAndNotifyParentRibbonGroupsContainer();
+        }
+
+        private static void OnFontSizeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var box = (RibbonGroupBox)d;
+            box.TryClearCacheAndResetStateAndScaleAndNotifyParentRibbonGroupsContainer();
+        }
+
+        private static void OnFontFamilyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var box = (RibbonGroupBox)d;
+            box.TryClearCacheAndResetStateAndScaleAndNotifyParentRibbonGroupsContainer();
         }
 
         /// <summary>
@@ -623,8 +664,8 @@ namespace Fluent
         /// </summary>
         public RibbonGroupBox()
         {
-            this.ToolTip = new ToolTip();
-            ((ToolTip)this.ToolTip).Template = null;
+            this.CacheResetGuard = new ScopeGuard(() => this.UpdateScalableControlSubscritions(false), () => this.UpdateScalableControlSubscritions(true));
+
             this.CoerceValue(ContextMenuProperty);
             this.Focusable = false;
 
@@ -649,14 +690,14 @@ namespace Fluent
             // Always unsubscribe events to ensure we don't subscribe twice
             this.UnSubscribeEvents();
 
-            this.UpdateScalableControlSubscribing();
+            this.UpdateScalableControlSubscritions(true);
 
-            if (this.LauncherButton != null)
+            if (this.LauncherButton is not null)
             {
                 this.LauncherButton.Click += this.OnDialogLauncherButtonClick;
             }
 
-            if (this.DropDownPopup != null)
+            if (this.DropDownPopup is not null)
             {
                 this.DropDownPopup.Opened += this.OnPopupOpened;
                 this.DropDownPopup.Closed += this.OnPopupClosed;
@@ -665,14 +706,14 @@ namespace Fluent
 
         private void UnSubscribeEvents()
         {
-            this.UpdateScalableControlSubscribing(false);
+            this.UpdateScalableControlSubscritions(false);
 
-            if (this.LauncherButton != null)
+            if (this.LauncherButton is not null)
             {
                 this.LauncherButton.Click -= this.OnDialogLauncherButtonClick;
             }
 
-            if (this.DropDownPopup != null)
+            if (this.DropDownPopup is not null)
             {
                 this.DropDownPopup.Opened -= this.OnPopupOpened;
                 this.DropDownPopup.Closed -= this.OnPopupClosed;
@@ -687,7 +728,7 @@ namespace Fluent
         /// Gets a panel with items
         /// </summary>
         /// <returns></returns>
-        internal Panel GetPanel()
+        internal Panel? GetPanel()
         {
             return this.upPanel;
         }
@@ -696,7 +737,7 @@ namespace Fluent
         /// Gets cmmon layout root for popup and groupbox
         /// </summary>
         /// <returns></returns>
-        internal Panel GetLayoutRoot()
+        internal Panel? GetLayoutRoot()
         {
             return this.parentPanel;
         }
@@ -730,15 +771,20 @@ namespace Fluent
                         // Render the freezed image
                         var renderTargetBitmap = new RenderTargetBitmap((int)this.ActualWidth, (int)this.ActualHeight, 96, 96, PixelFormats.Pbgra32);
                         renderTargetBitmap.Render((Visual)VisualTreeHelper.GetChild(this, 0));
-                        this.snappedImage.FlowDirection = this.FlowDirection;
-                        this.snappedImage.Source = renderTargetBitmap;
-                        this.snappedImage.Width = this.ActualWidth;
-                        this.snappedImage.Height = this.ActualHeight;
-                        this.snappedImage.Visibility = Visibility.Visible;
+
+                        if (this.snappedImage is not null)
+                        {
+                            this.snappedImage.FlowDirection = this.FlowDirection;
+                            this.snappedImage.Source = renderTargetBitmap;
+                            this.snappedImage.Width = this.ActualWidth;
+                            this.snappedImage.Height = this.ActualHeight;
+                            this.snappedImage.Visibility = Visibility.Visible;
+                        }
+
                         this.isSnapped = true;
                     }
                 }
-                else if (this.snappedImage != null)
+                else if (this.snappedImage is not null)
                 {
                     // Clean up
                     this.snappedImage.Visibility = Visibility.Collapsed;
@@ -753,12 +799,14 @@ namespace Fluent
 
         #region Caching
 
+#pragma warning disable 414
         // Pair of chached states
         private struct StateScale
         {
             public RibbonGroupBoxState State;
             public int Scale;
         }
+#pragma warning restore 414
 
         // Cache
         private readonly Dictionary<StateScale, Size> cachedMeasures = new Dictionary<StateScale, Size>();
@@ -780,38 +828,90 @@ namespace Fluent
         {
             get
             {
-                Size result;
                 var stateScale = this.GetCurrentIntermediateStateScale();
 
-                if (this.cachedMeasures.TryGetValue(stateScale, out result) == false)
+                if (this.cachedMeasures.TryGetValue(stateScale, out var result) == false)
                 {
                     var contentHeight = UIHelper.GetParent<RibbonTabControl>(this)?.ContentHeight ?? RibbonTabControl.DefaultContentHeight;
 
-                    this.SuppressCacheReseting = true;
-                    this.UpdateScalableControlSubscribing();
+                    using (this.CacheResetGuard.Start())
+                    {
+                        // Get desired size for these values
+                        var backupState = this.State;
+                        var backupScale = this.Scale;
+                        this.State = this.StateIntermediate;
+                        this.Scale = this.ScaleIntermediate;
+                        this.InvalidateLayout();
+                        this.Measure(new Size(double.PositiveInfinity, contentHeight));
+                        this.cachedMeasures.Remove(stateScale);
+                        this.cachedMeasures.Add(stateScale, this.DesiredSize);
+                        result = this.DesiredSize;
 
-                    // Get desired size for these values
-                    var backupState = this.State;
-                    var backupScale = this.Scale;
-                    this.State = this.StateIntermediate;
-                    this.Scale = this.ScaleIntermediate;
-                    this.InvalidateLayout();
-                    this.Measure(new Size(double.PositiveInfinity, contentHeight));
-                    this.cachedMeasures.Remove(stateScale);
-                    this.cachedMeasures.Add(stateScale, this.DesiredSize);
-                    result = this.DesiredSize;
+                        // Rollback changes
+                        this.State = backupState;
+                        this.Scale = backupScale;
+                        this.InvalidateLayout();
+                        this.Measure(new Size(double.PositiveInfinity, contentHeight));
 
-                    // Rollback changes
-                    this.State = backupState;
-                    this.Scale = backupScale;
-                    this.InvalidateLayout();
-                    this.Measure(new Size(double.PositiveInfinity, contentHeight));
-
-                    this.SuppressCacheReseting = false;
+                        this.UpdateScalableControlSubscritions(true);
+                    }
                 }
 
                 return result;
             }
+        }
+
+        private bool TryClearCache()
+        {
+            if (this.CacheResetGuard.IsActive == false)
+            {
+                this.ClearCache();
+                return true;
+            }
+
+            return false;
+        }
+
+        internal bool TryClearCacheAndResetStateAndScale()
+        {
+            if (this.CacheResetGuard.IsActive
+                || this.IsLoaded == false
+                || this.State == RibbonGroupBoxState.QuickAccess)
+            {
+                return false;
+            }
+
+            this.UpdateScalableControlSubscritions(false);
+
+            this.State = RibbonGroupBoxState.Large;
+            this.Scale = 0;
+            this.StateIntermediate = RibbonGroupBoxState.Large;
+            this.ScaleIntermediate = 0;
+            this.ClearCache();
+
+            this.ResetScaleableItems();
+
+            this.UpdateScalableControlSubscritions(true);
+            return true;
+        }
+
+        /// <summary>
+        /// Tries to clear the cache, reset the state and reset the scale.
+        /// If that succeeds the parent <see cref="RibbonGroupsContainer"/> is notified about that.
+        /// </summary>
+        /// <returns><c>true</c> if the cache was reset. Otherwise <c>false</c>.</returns>
+        public bool TryClearCacheAndResetStateAndScaleAndNotifyParentRibbonGroupsContainer()
+        {
+            // We should try to clear the entire cache.
+            // The entire cache should only be cleared if we don't do regular measuring, but only if some event outside our own measuring code caused size changes (such as elements getting visible/invisible or being added/removed).
+            // For reference https://github.com/fluentribbon/Fluent.Ribbon/issues/834
+            if (this.TryClearCacheAndResetStateAndScale())
+            {
+                UIHelper.GetParent<RibbonGroupsContainer>(this)?.GroupBoxCacheClearedAndStateAndScaleResetted(this);
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -832,7 +932,7 @@ namespace Fluent
 
         private static void InvalidateMeasureRecursive(UIElement element)
         {
-            if (element == null)
+            if (element is null)
             {
                 return;
             }
@@ -843,7 +943,7 @@ namespace Fluent
             {
                 var child = VisualTreeHelper.GetChild(element, i) as UIElement;
 
-                if (child == null)
+                if (child is null)
                 {
                     continue;
                 }
@@ -856,22 +956,22 @@ namespace Fluent
 
         #region Overrides
 
-        /// <summary>
-        /// When overridden in a derived class, is invoked whenever application code
-        /// or internal processes call System.Windows.FrameworkElement.ApplyTemplate().
-        /// </summary>
+        /// <inheritdoc />
         public override void OnApplyTemplate()
         {
             this.UnSubscribeEvents();
 
             // Clear cache
-            this.cachedMeasures.Clear();
+            this.ClearCache();
+
+            this.HeaderContentControl = this.GetTemplateChild("PART_HeaderContentControl") as ContentControl;
+            this.CollapsedHeaderContentControl = this.GetTemplateChild("PART_CollapsedHeaderContentControl") as ContentControl;
 
             this.LauncherButton = this.GetTemplateChild("PART_DialogLauncherButton") as Button;
 
-            if (this.LauncherButton != null)
+            if (this.LauncherButton is not null)
             {
-                if (this.LauncherKeys != null)
+                if (this.LauncherKeys is not null)
                 {
                     this.LauncherButton.KeyTip = this.LauncherKeys;
                 }
@@ -887,27 +987,29 @@ namespace Fluent
             this.SubscribeEvents();
         }
 
-        private void OnPopupOpened(object sender, EventArgs e)
+        private void OnPopupOpened(object? sender, EventArgs e)
         {
             this.DropDownOpened?.Invoke(this, e);
         }
 
-        private void OnPopupClosed(object sender, EventArgs e)
+        private void OnPopupClosed(object? sender, EventArgs e)
         {
             this.DropDownClosed?.Invoke(this, e);
         }
 
-        /// <summary>
-        /// Invoked when an unhandled System.Windows.UIElement.PreviewMouseLeftButtonDown
-        /// event reaches an element in its route that is derived from this class.
-        /// Implement this method to add class handling for this event.
-        /// </summary>
-        /// <param name="e">The System.Windows.Input.MouseButtonEventArgs that contains the event data.
-        /// The event data reports that the left mouse button was pressed.</param>
+        /// <inheritdoc />
+        protected override void OnItemsChanged(NotifyCollectionChangedEventArgs e)
+        {
+            base.OnItemsChanged(e);
+
+            this.TryClearCacheAndResetStateAndScaleAndNotifyParentRibbonGroupsContainer();
+        }
+
+        /// <inheritdoc />
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
         {
             if (ReferenceEquals(e.Source, this) == false
-                || this.DropDownPopup == null)
+                || this.DropDownPopup is null)
             {
                 return;
             }
@@ -928,14 +1030,12 @@ namespace Fluent
             }
         }
 
-        /// <summary>
-        /// Supports layout behavior when a child element is resized.
-        /// </summary>
-        /// <param name="child">The child element that is being resized.</param>
+        /// <inheritdoc />
         protected override void OnChildDesiredSizeChanged(UIElement child)
         {
             base.OnChildDesiredSizeChanged(child);
 
+            // We must always clear the current cached measure.
             this.cachedMeasures.Remove(this.GetCurrentIntermediateStateScale());
         }
 
@@ -963,6 +1063,35 @@ namespace Fluent
             this.LauncherClick?.Invoke(this, e);
         }
 
+        /// <summary>
+        /// Handles IsOpen propertyu changes
+        /// </summary>
+        /// <param name="d">Object</param>
+        /// <param name="e">The event data</param>
+        private static void OnIsDropDownOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var groupBox = (RibbonGroupBox)d;
+
+            var oldValue = (bool)e.OldValue;
+            var newValue = (bool)e.NewValue;
+
+            groupBox.OnIsDropDownOpenChanged();
+
+            (UIElementAutomationPeer.FromElement(groupBox) as Fluent.Automation.Peers.RibbonGroupBoxAutomationPeer)?.RaiseExpandCollapseAutomationEvent(oldValue, newValue);
+        }
+
+        private void OnIsDropDownOpenChanged()
+        {
+            if (this.IsDropDownOpen)
+            {
+                this.OnRibbonGroupBoxPopupOpening();
+            }
+            else
+            {
+                this.OnRibbonGroupBoxPopupClosing();
+            }
+        }
+
         // Handles popup closing
         private void OnRibbonGroupBoxPopupClosing()
         {
@@ -977,38 +1106,14 @@ namespace Fluent
         private void OnRibbonGroupBoxPopupOpening()
         {
             //IsHitTestVisible = false;
-            Mouse.Capture(this, CaptureMode.SubTree);
-        }
-
-        /// <summary>
-        /// Handles IsOpen propertyu changes
-        /// </summary>
-        /// <param name="d">Object</param>
-        /// <param name="e">The event data</param>
-        private static void OnIsOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            var ribbon = (RibbonGroupBox)d;
-
-            if (ribbon.IsDropDownOpen)
-            {
-                ribbon.OnRibbonGroupBoxPopupOpening();
-            }
-            else
-            {
-                ribbon.OnRibbonGroupBoxPopupClosing();
-            }
+            this.RunInDispatcherAsync(() => Mouse.Capture(this, CaptureMode.SubTree), DispatcherPriority.Loaded);
         }
 
         #endregion
 
         #region Quick Access Item Creating
 
-        /// <summary>
-        /// Gets control which represents shortcut item.
-        /// This item MUST be syncronized with the original
-        /// and send command to original one control.
-        /// </summary>
-        /// <returns>Control which represents shortcut item</returns>
+        /// <inheritdoc />
         public virtual FrameworkElement CreateQuickAccessItem()
         {
             var groupBox = new RibbonGroupBox();
@@ -1031,13 +1136,12 @@ namespace Fluent
             RibbonControl.Bind(this, groupBox, nameof(this.LauncherToolTip), LauncherToolTipProperty, BindingMode.OneWay);
             RibbonControl.Bind(this, groupBox, nameof(this.IsLauncherEnabled), IsLauncherEnabledProperty, BindingMode.OneWay);
             RibbonControl.Bind(this, groupBox, nameof(this.IsLauncherVisible), IsLauncherVisibleProperty, BindingMode.OneWay);
-            RibbonControl.Bind(this, groupBox, nameof(this.LauncherKeys), DialogLauncherButtonKeyTipKeysProperty, BindingMode.OneWay);
+            RibbonControl.Bind(this, groupBox, nameof(this.LauncherKeys), LauncherKeysProperty, BindingMode.OneWay);
             groupBox.LauncherClick += this.LauncherClick;
 
-            if (this.Icon != null)
+            if (this.Icon is not null)
             {
-                var iconVisual = this.Icon as Visual;
-                if (iconVisual != null)
+                if (this.Icon is Visual iconVisual)
                 {
                     var rect = new Rectangle
                     {
@@ -1056,35 +1160,35 @@ namespace Fluent
             return groupBox;
         }
 
-        private void OnQuickAccessOpened(object sender, EventArgs e)
+        private void OnQuickAccessOpened(object? sender, EventArgs e)
         {
             if (this.IsDropDownOpen == false
                 && this.IsSnapped == false)
             {
-                var groupBox = (RibbonGroupBox)sender;
+                var groupBox = (RibbonGroupBox?)sender;
                 // Save state
                 this.IsSnapped = true;
 
-                if (this.ItemsSource == null)
+                if (this.ItemsSource is null)
                 {
                     for (var i = 0; i < this.Items.Count; i++)
                     {
                         var item = this.Items[0];
                         this.Items.Remove(item);
-                        groupBox.Items.Add(item);
+                        groupBox?.Items.Add(item);
                         i--;
                     }
                 }
             }
         }
 
-        private void OnQuickAccessClosed(object sender, EventArgs e)
+        private void OnQuickAccessClosed(object? sender, EventArgs e)
         {
-            var groupBox = (RibbonGroupBox)sender;
+            var groupBox = (RibbonGroupBox?)sender;
 
-            if (this.ItemsSource == null)
+            if (this.ItemsSource is null)
             {
-                for (var i = 0; i < groupBox.Items.Count; i++)
+                for (var i = 0; i < groupBox?.Items.Count; i++)
                 {
                     var item = groupBox.Items[0];
                     groupBox.Items.Remove(item);
@@ -1096,20 +1200,16 @@ namespace Fluent
             this.IsSnapped = false;
         }
 
-        /// <summary>
-        /// Gets or sets whether control can be added to quick access toolbar
-        /// </summary>
+        /// <inheritdoc />
         public bool CanAddToQuickAccessToolBar
         {
             get { return (bool)this.GetValue(CanAddToQuickAccessToolBarProperty); }
-            set { this.SetValue(CanAddToQuickAccessToolBarProperty, value); }
+            set { this.SetValue(CanAddToQuickAccessToolBarProperty, BooleanBoxes.Box(value)); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for CanAddToQuickAccessToolBar.  This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="CanAddToQuickAccessToolBar"/> dependency property.</summary>
         public static readonly DependencyProperty CanAddToQuickAccessToolBarProperty =
-            DependencyProperty.Register(nameof(CanAddToQuickAccessToolBar), typeof(bool), typeof(RibbonGroupBox), new PropertyMetadata(BooleanBoxes.TrueBox, RibbonControl.OnCanAddToQuickAccessToolbarChanged));
+            DependencyProperty.Register(nameof(CanAddToQuickAccessToolBar), typeof(bool), typeof(RibbonGroupBox), new PropertyMetadata(BooleanBoxes.TrueBox, RibbonControl.OnCanAddToQuickAccessToolBarChanged));
 
         #endregion
 
@@ -1123,7 +1223,7 @@ namespace Fluent
             {
                 this.IsDropDownOpen = true;
 
-                if (this.DropDownPopup?.Child != null)
+                if (this.DropDownPopup?.Child is not null)
                 {
                     Keyboard.Focus(this.DropDownPopup.Child);
                     this.DropDownPopup.Child.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
@@ -1144,5 +1244,48 @@ namespace Fluent
         }
 
         #endregion
+
+        /// <inheritdoc />
+        void ILogicalChildSupport.AddLogicalChild(object child)
+        {
+            this.AddLogicalChild(child);
+        }
+
+        /// <inheritdoc />
+        void ILogicalChildSupport.RemoveLogicalChild(object child)
+        {
+            this.RemoveLogicalChild(child);
+        }
+
+        /// <inheritdoc />
+        protected override IEnumerator LogicalChildren
+        {
+            get
+            {
+                var baseEnumerator = base.LogicalChildren;
+                while (baseEnumerator?.MoveNext() == true)
+                {
+                    yield return baseEnumerator.Current;
+                }
+
+                if (this.Icon is not null)
+                {
+                    yield return this.Icon;
+                }
+
+                if (this.MediumIcon is not null)
+                {
+                    yield return this.MediumIcon;
+                }
+
+                if (this.LauncherIcon is not null)
+                {
+                    yield return this.LauncherIcon;
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        protected override AutomationPeer OnCreateAutomationPeer() => new Fluent.Automation.Peers.RibbonGroupBoxAutomationPeer(this);
     }
 }

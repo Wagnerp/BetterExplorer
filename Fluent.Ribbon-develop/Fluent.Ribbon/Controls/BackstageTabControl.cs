@@ -1,22 +1,33 @@
-﻿// ReSharper disable once CheckNamespace
+// ReSharper disable once CheckNamespace
 namespace Fluent
 {
     using System;
+    using System.Collections;
     using System.Collections.Specialized;
     using System.ComponentModel;
     using System.Windows;
+    using System.Windows.Automation.Peers;
     using System.Windows.Controls;
     using System.Windows.Controls.Primitives;
+    using System.Windows.Input;
     using System.Windows.Media;
+    using Fluent.Extensions;
+    using Fluent.Helpers;
     using Fluent.Internal;
     using Fluent.Internal.KnownBoxes;
 
     /// <summary>
     /// Represents Backstage tab control.
     /// </summary>
-    public class BackstageTabControl : Selector
+    [TemplatePart(Name = "PART_SelectedContentHost", Type = typeof(ContentPresenter))]
+    [TemplatePart(Name = "PART_ItemsPanelContainer", Type = typeof(UIElement))]
+    public class BackstageTabControl : Selector, ILogicalChildSupport
     {
         #region Properties
+
+        internal ContentPresenter? SelectedContentHost { get; private set; }
+
+        internal UIElement? ItemsPanelContainer { get; private set; }
 
         /// <summary>
         /// Gets or sets the margin which is used to render selected content.
@@ -27,81 +38,58 @@ namespace Fluent
             set { this.SetValue(SelectedContentMarginProperty, value); }
         }
 
-        /// <summary>
-        /// <see cref="DependencyProperty"/> for <see cref="SelectedContentMargin"/>.
-        /// </summary>
+        /// <summary>Identifies the <see cref="SelectedContentMargin"/> dependency property.</summary>
         public static readonly DependencyProperty SelectedContentMarginProperty =
             DependencyProperty.Register(nameof(SelectedContentMargin), typeof(Thickness), typeof(BackstageTabControl), new PropertyMetadata(default(Thickness)));
 
         // Dependency property key for SelectedContent
-        private static readonly DependencyPropertyKey SelectedContentPropertyKey = DependencyProperty.RegisterReadOnly(nameof(SelectedContent), typeof(object), typeof(BackstageTabControl), new PropertyMetadata());
+        private static readonly DependencyPropertyKey SelectedContentPropertyKey = DependencyProperty.RegisterReadOnly(nameof(SelectedContent), typeof(object), typeof(BackstageTabControl), new PropertyMetadata(LogicalChildSupportHelper.OnLogicalChildPropertyChanged));
 
-        /// <summary>
-        /// Dependency property for <see cref="SelectedContent"/>
-        /// </summary>
+        /// <summary>Identifies the <see cref="SelectedContent"/> dependency property.</summary>
         public static readonly DependencyProperty SelectedContentProperty = SelectedContentPropertyKey.DependencyProperty;
 
         /// <summary>
         /// Gets content for selected tab
         /// </summary>
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public object SelectedContent
+        public object? SelectedContent
         {
-            get
-            {
-                return this.GetValue(SelectedContentProperty);
-            }
-
-            internal set
-            {
-                this.SetValue(SelectedContentPropertyKey, value);
-            }
+            get { return this.GetValue(SelectedContentProperty); }
+            internal set { this.SetValue(SelectedContentPropertyKey, value); }
         }
 
-        /// <summary>
-        /// Dependency property for <see cref="ContentStringFormat"/>
-        /// </summary>
+        /// <summary>Identifies the <see cref="ContentStringFormat"/> dependency property.</summary>
         public static readonly DependencyProperty ContentStringFormatProperty = DependencyProperty.Register(nameof(ContentStringFormat), typeof(string), typeof(BackstageTabControl), new PropertyMetadata());
 
-        /// <summary>
-        /// Dependency property for <see cref="ContentTemplate"/>
-        /// </summary>
+        /// <summary>Identifies the <see cref="ContentTemplate"/> dependency property.</summary>
         public static readonly DependencyProperty ContentTemplateProperty = DependencyProperty.Register(nameof(ContentTemplate), typeof(DataTemplate), typeof(BackstageTabControl), new PropertyMetadata());
 
-        /// <summary>
-        /// Dependency property for <see cref="ContentTemplateSelector"/>
-        /// </summary>
+        /// <summary>Identifies the <see cref="ContentTemplateSelector"/> dependency property.</summary>
         public static readonly DependencyProperty ContentTemplateSelectorProperty = DependencyProperty.Register(nameof(ContentTemplateSelector), typeof(DataTemplateSelector), typeof(BackstageTabControl), new PropertyMetadata());
 
         private static readonly DependencyPropertyKey SelectedContentStringFormatPropertyKey = DependencyProperty.RegisterReadOnly(nameof(SelectedContentStringFormat), typeof(string), typeof(BackstageTabControl), new PropertyMetadata());
 
-        /// <summary>
-        /// Dependency property for <see cref="SelectedContentStringFormat"/>
-        /// </summary>
+        /// <summary>Identifies the <see cref="SelectedContentStringFormat"/> dependency property.</summary>
         public static readonly DependencyProperty SelectedContentStringFormatProperty = SelectedContentStringFormatPropertyKey.DependencyProperty;
 
         private static readonly DependencyPropertyKey SelectedContentTemplatePropertyKey = DependencyProperty.RegisterReadOnly(nameof(SelectedContentTemplate), typeof(DataTemplate), typeof(BackstageTabControl), new PropertyMetadata());
 
-        /// <summary>
-        /// Dependency property for <see cref="SelectedContentTemplate"/>
-        /// </summary>
+        /// <summary>Identifies the <see cref="SelectedContentTemplate"/> dependency property.</summary>
         public static readonly DependencyProperty SelectedContentTemplateProperty = SelectedContentTemplatePropertyKey.DependencyProperty;
 
         private static readonly DependencyPropertyKey SelectedContentTemplateSelectorPropertyKey = DependencyProperty.RegisterReadOnly(nameof(SelectedContentTemplateSelector), typeof(DataTemplateSelector), typeof(BackstageTabControl), new PropertyMetadata());
 
-        /// <summary>
-        /// Dependency property for <see cref="SelectedContentTemplateSelector"/>
-        /// </summary>
+        /// <summary>Identifies the <see cref="SelectedContentTemplateSelector"/> dependency property.</summary>
         public static readonly DependencyProperty SelectedContentTemplateSelectorProperty = SelectedContentTemplateSelectorPropertyKey.DependencyProperty;
 
         /// <summary>
         /// Get or sets the string format for the content.
         /// </summary>
-        public string ContentStringFormat
+        public string? ContentStringFormat
         {
             get
             {
-                return (string)this.GetValue(ContentStringFormatProperty);
+                return (string?)this.GetValue(ContentStringFormatProperty);
             }
 
             set
@@ -113,11 +101,11 @@ namespace Fluent
         /// <summary>
         /// Gets or sets the <see cref="DataTemplate"/> which should be used for the content
         /// </summary>
-        public DataTemplate ContentTemplate
+        public DataTemplate? ContentTemplate
         {
             get
             {
-                return (DataTemplate)this.GetValue(ContentTemplateProperty);
+                return (DataTemplate?)this.GetValue(ContentTemplateProperty);
             }
 
             set
@@ -129,11 +117,11 @@ namespace Fluent
         /// <summary>
         /// Gets or sets the <see cref="ContentTemplateSelector"/> which should be used for the content
         /// </summary>
-        public DataTemplateSelector ContentTemplateSelector
+        public DataTemplateSelector? ContentTemplateSelector
         {
             get
             {
-                return (DataTemplateSelector)this.GetValue(ContentTemplateSelectorProperty);
+                return (DataTemplateSelector?)this.GetValue(ContentTemplateSelectorProperty);
             }
 
             set
@@ -145,11 +133,11 @@ namespace Fluent
         /// <summary>
         /// Get or sets the string format for the selected content.
         /// </summary>
-        public string SelectedContentStringFormat
+        public string? SelectedContentStringFormat
         {
             get
             {
-                return (string)this.GetValue(SelectedContentStringFormatProperty);
+                return (string?)this.GetValue(SelectedContentStringFormatProperty);
             }
 
             internal set
@@ -162,11 +150,11 @@ namespace Fluent
         /// Gets or sets the <see cref="DataTemplate"/> which should be used for the selected content
         /// </summary>
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public DataTemplate SelectedContentTemplate
+        public DataTemplate? SelectedContentTemplate
         {
             get
             {
-                return (DataTemplate)this.GetValue(SelectedContentTemplateProperty);
+                return (DataTemplate?)this.GetValue(SelectedContentTemplateProperty);
             }
 
             internal set
@@ -179,11 +167,11 @@ namespace Fluent
         /// Gets or sets the <see cref="ContentTemplateSelector"/> which should be used for the selected content
         /// </summary>
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public DataTemplateSelector SelectedContentTemplateSelector
+        public DataTemplateSelector? SelectedContentTemplateSelector
         {
             get
             {
-                return (DataTemplateSelector)this.GetValue(SelectedContentTemplateSelectorProperty);
+                return (DataTemplateSelector?)this.GetValue(SelectedContentTemplateSelectorProperty);
             }
 
             internal set
@@ -194,9 +182,7 @@ namespace Fluent
 
         #region ItemsPanelMinWidth
 
-        /// <summary>
-        /// Dependency property for <see cref="ItemsPanelMinWidth"/>.
-        /// </summary>
+        /// <summary>Identifies the <see cref="ItemsPanelMinWidth"/> dependency property.</summary>
         public static readonly DependencyProperty ItemsPanelMinWidthProperty = DependencyProperty.Register(nameof(ItemsPanelMinWidth), typeof(double), typeof(BackstageTabControl), new PropertyMetadata(125d));
 
         /// <summary>
@@ -215,15 +201,13 @@ namespace Fluent
         /// <summary>
         /// Gets or sets current Backround of the ItemsPanel
         /// </summary>
-        public Brush ItemsPanelBackground
+        public Brush? ItemsPanelBackground
         {
-            get { return (Brush)this.GetValue(ItemsPanelBackgroundProperty); }
+            get { return (Brush?)this.GetValue(ItemsPanelBackgroundProperty); }
             set { this.SetValue(ItemsPanelBackgroundProperty, value); }
         }
 
-        /// <summary>
-        /// Dependency property for <see cref="ItemsPanelBackground"/>
-        /// </summary>
+        /// <summary>Identifies the <see cref="ItemsPanelBackground"/> dependency property.</summary>
         public static readonly DependencyProperty ItemsPanelBackgroundProperty = DependencyProperty.Register(nameof(ItemsPanelBackground), typeof(Brush), typeof(BackstageTabControl));
 
         #endregion
@@ -233,15 +217,13 @@ namespace Fluent
         /// </summary>
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public Backstage ParentBackstage
+        public Backstage? ParentBackstage
         {
-            get { return (Backstage)this.GetValue(ParentBackstageProperty); }
+            get { return (Backstage?)this.GetValue(ParentBackstageProperty); }
             set { this.SetValue(ParentBackstageProperty, value); }
         }
 
-        /// <summary>
-        /// <see cref="DependencyProperty"/> for <see cref="ParentBackstage"/>
-        /// </summary>
+        /// <summary>Identifies the <see cref="ParentBackstage"/> dependency property.</summary>
         public static readonly DependencyProperty ParentBackstageProperty =
             DependencyProperty.Register(nameof(ParentBackstage), typeof(Backstage), typeof(BackstageTabControl), new PropertyMetadata());
 
@@ -251,12 +233,10 @@ namespace Fluent
         public bool IsWindowSteeringHelperEnabled
         {
             get { return (bool)this.GetValue(IsWindowSteeringHelperEnabledProperty); }
-            set { this.SetValue(IsWindowSteeringHelperEnabledProperty, value); }
+            set { this.SetValue(IsWindowSteeringHelperEnabledProperty, BooleanBoxes.Box(value)); }
         }
 
-        /// <summary>
-        /// <see cref="DependencyProperty"/> for <see cref="IsWindowSteeringHelperEnabled"/>.
-        /// </summary>
+        /// <summary>Identifies the <see cref="IsWindowSteeringHelperEnabled"/> dependency property.</summary>
         public static readonly DependencyProperty IsWindowSteeringHelperEnabledProperty =
             DependencyProperty.Register(nameof(IsWindowSteeringHelperEnabled), typeof(bool), typeof(BackstageTabControl), new PropertyMetadata(BooleanBoxes.TrueBox));
 
@@ -266,12 +246,10 @@ namespace Fluent
         public bool IsBackButtonVisible
         {
             get { return (bool)this.GetValue(IsBackButtonVisibleProperty); }
-            set { this.SetValue(IsBackButtonVisibleProperty, value); }
+            set { this.SetValue(IsBackButtonVisibleProperty, BooleanBoxes.Box(value)); }
         }
 
-        /// <summary>
-        /// <see cref="DependencyProperty"/> for <see cref="IsBackButtonVisible"/>.
-        /// </summary>
+        /// <summary>Identifies the <see cref="IsBackButtonVisible"/> dependency property.</summary>
         public static readonly DependencyProperty IsBackButtonVisibleProperty = DependencyProperty.Register(nameof(IsBackButtonVisible), typeof(bool), typeof(BackstageTabControl), new PropertyMetadata(BooleanBoxes.TrueBox));
 
         #endregion
@@ -284,6 +262,10 @@ namespace Fluent
         static BackstageTabControl()
         {
             DefaultStyleKeyProperty.OverrideMetadata(typeof(BackstageTabControl), new FrameworkPropertyMetadata(typeof(BackstageTabControl)));
+
+            KeyboardNavigation.TabNavigationProperty.OverrideMetadata(typeof(BackstageTabControl), new FrameworkPropertyMetadata(KeyboardNavigationMode.Cycle));
+            KeyboardNavigation.ControlTabNavigationProperty.OverrideMetadata(typeof(BackstageTabControl), new FrameworkPropertyMetadata(KeyboardNavigationMode.Cycle));
+            KeyboardNavigation.DirectionalNavigationProperty.OverrideMetadata(typeof(BackstageTabControl), new FrameworkPropertyMetadata(KeyboardNavigationMode.Cycle));
         }
 
         /// <summary>
@@ -319,12 +301,7 @@ namespace Fluent
 
         #region Overrides
 
-        /// <summary>
-        /// Raises the System.Windows.FrameworkElement.Initialized event.
-        /// This method is invoked whenever System.Windows.FrameworkElement.
-        /// IsInitialized is set to true internally.
-        /// </summary>
-        /// <param name="e">The System.Windows.RoutedEventArgs that contains the event data.</param>
+        /// <inheritdoc />
         protected override void OnInitialized(EventArgs e)
         {
             base.OnInitialized(e);
@@ -332,32 +309,31 @@ namespace Fluent
             this.ItemContainerGenerator.StatusChanged += this.OnGeneratorStatusChanged;
         }
 
-        /// <summary>
-        /// Creates or identifies the element that is used to display the given item.
-        /// </summary>
-        /// <returns>The element that is used to display the given item.</returns>
+        /// <inheritdoc />
+        public override void OnApplyTemplate()
+        {
+            base.OnApplyTemplate();
+
+            this.ItemsPanelContainer = this.GetTemplateChild("PART_ItemsPanelContainer") as UIElement;
+            this.SelectedContentHost = this.GetTemplateChild("PART_SelectedContentHost") as ContentPresenter;
+        }
+
+        /// <inheritdoc />
         protected override DependencyObject GetContainerForItemOverride()
         {
             return new BackstageTabItem();
         }
 
-        /// <summary>
-        /// Determines if the specified item is (or is eligible to be) its own container.
-        /// </summary>
-        /// <param name="item">The item to check.</param>
-        /// <returns></returns>
+        /// <inheritdoc />
         protected override bool IsItemItsOwnContainerOverride(object item)
         {
             return item is BackstageTabItem
-                || item is Button
-                || item is SeparatorTabItem
-                || item is Separator;
+                or Button
+                or SeparatorTabItem
+                or Separator;
         }
 
-        /// <summary>
-        /// Updates the current selection when an item in the System.Windows.Controls.Primitives.Selector has changed
-        /// </summary>
-        /// <param name="e">The event data.</param>
+        /// <inheritdoc />
         protected override void OnItemsChanged(NotifyCollectionChangedEventArgs e)
         {
             base.OnItemsChanged(e);
@@ -372,17 +348,14 @@ namespace Fluent
                 }
 
                 var item = this.FindNextTabItem(startIndex, -1);
-                if (item != null)
+                if (item is not null)
                 {
                     item.IsSelected = true;
                 }
             }
         }
 
-        /// <summary>
-        /// Called when the selection changes.
-        /// </summary>
-        /// <param name="e">The event data.</param>
+        /// <inheritdoc />
         protected override void OnSelectionChanged(SelectionChangedEventArgs e)
         {
             base.OnSelectionChanged(e);
@@ -390,6 +363,45 @@ namespace Fluent
             if (e.AddedItems.Count > 0)
             {
                 this.UpdateSelectedContent();
+            }
+        }
+
+        /// <inheritdoc />
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.Handled)
+            {
+                base.OnKeyDown(e);
+                return;
+            }
+
+            // Handle [Ctrl][Shift]Tab
+
+            switch (e.Key)
+            {
+                case Key.F6:
+                case Key.Tab when (e.KeyboardDevice.Modifiers & ModifierKeys.Control) == ModifierKeys.Control:
+                    {
+                        var focusNavigationDirection = (e.KeyboardDevice.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift
+                            ? FocusNavigationDirection.Last
+                            : FocusNavigationDirection.First;
+
+                        if (this.SelectedContentHost?.IsKeyboardFocusWithin == true)
+                        {
+                            e.Handled = this.ItemsPanelContainer?.MoveFocus(new TraversalRequest(focusNavigationDirection)) == true;
+                        }
+                        else
+                        {
+                            e.Handled = this.SelectedContentHost?.MoveFocus(new TraversalRequest(focusNavigationDirection)) == true;
+                        }
+                    }
+
+                    break;
+            }
+
+            if (!e.Handled)
+            {
+                base.OnKeyDown(e);
             }
         }
 
@@ -402,16 +414,19 @@ namespace Fluent
         /// If there is no item selected, the first found item is selected and it's container (<see cref="BackstageTabItem"/>) is returned.
         /// </summary>
         /// <returns>The currently selected <see cref="BackstageTabItem"/>. Or null of nothing was selected and nothing could be selected.</returns>
-        private BackstageTabItem GetSelectedTabItem()
+        private BackstageTabItem? GetSelectedTabItem()
         {
-            var container = this.ItemContainerGenerator.ContainerFromItem(this.SelectedItem) as BackstageTabItem;
-            if (container == null)
+            var container = this.ItemContainerGenerator.ContainerOrContainerContentFromItem<BackstageTabItem>(this.SelectedItem);
+
+            if (container is null
+                || container.IsEnabled == false
+                || container.Visibility != Visibility.Visible)
             {
                 container = this.FindNextTabItem(this.SelectedIndex, 1);
 
-                if (container != null)
+                if (container is not null)
                 {
-                    this.SelectedItem = this.ItemContainerGenerator.ItemFromContainer(container);
+                    this.SelectedItem = this.ItemContainerGenerator.ItemFromContainerOrContainerContent(container);
                 }
             }
 
@@ -419,7 +434,7 @@ namespace Fluent
         }
 
         // Finds next tab item
-        private BackstageTabItem FindNextTabItem(int startIndex, int direction)
+        private BackstageTabItem? FindNextTabItem(int startIndex, int direction)
         {
             if (direction == 0)
             {
@@ -440,9 +455,8 @@ namespace Fluent
                     index = this.Items.Count - 1;
                 }
 
-                var container = this.ItemContainerGenerator.ContainerFromIndex(index) as BackstageTabItem;
-
-                if (container != null
+                var container = this.ItemContainerGenerator.ContainerOrContainerContentFromIndex<BackstageTabItem>(index);
+                if (container is not null
                     && container.IsEnabled
                     && container.Visibility == Visibility.Visible)
                 {
@@ -463,15 +477,16 @@ namespace Fluent
             else
             {
                 var selectedTabItem = this.GetSelectedTabItem();
-                if (selectedTabItem == null)
+                if (selectedTabItem is null)
                 {
                     return;
                 }
 
                 this.SelectedContent = selectedTabItem.Content;
-                if (selectedTabItem.ContentTemplate != null
-                    || selectedTabItem.ContentTemplateSelector != null
-                    || selectedTabItem.ContentStringFormat != null)
+
+                if (selectedTabItem.ContentTemplate is not null
+                    || selectedTabItem.ContentTemplateSelector is not null
+                    || selectedTabItem.ContentStringFormat is not null)
                 {
                     this.SelectedContentTemplate = selectedTabItem.ContentTemplate;
                     this.SelectedContentTemplateSelector = selectedTabItem.ContentTemplateSelector;
@@ -493,7 +508,7 @@ namespace Fluent
         #region Event handling
 
         // Handles GeneratorStatusChange
-        private void OnGeneratorStatusChanged(object sender, EventArgs e)
+        private void OnGeneratorStatusChanged(object? sender, EventArgs e)
         {
             if (this.ItemContainerGenerator.Status != GeneratorStatus.ContainersGenerated)
             {
@@ -510,5 +525,38 @@ namespace Fluent
         }
 
         #endregion
+
+        /// <inheritdoc />
+        protected override AutomationPeer OnCreateAutomationPeer() => new Fluent.Automation.Peers.RibbonBackstageTabControlAutomationPeer(this);
+
+        /// <inheritdoc />
+        void ILogicalChildSupport.AddLogicalChild(object child)
+        {
+            this.AddLogicalChild(child);
+        }
+
+        /// <inheritdoc />
+        void ILogicalChildSupport.RemoveLogicalChild(object child)
+        {
+            this.RemoveLogicalChild(child);
+        }
+
+        /// <inheritdoc />
+        protected override IEnumerator LogicalChildren
+        {
+            get
+            {
+                var baseEnumerator = base.LogicalChildren;
+                while (baseEnumerator?.MoveNext() == true)
+                {
+                    yield return baseEnumerator.Current;
+                }
+
+                if (this.SelectedContent is not null)
+                {
+                    yield return this.SelectedContent;
+                }
+            }
+        }
     }
 }

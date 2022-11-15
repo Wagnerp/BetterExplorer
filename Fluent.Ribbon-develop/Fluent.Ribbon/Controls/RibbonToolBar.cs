@@ -13,12 +13,14 @@ namespace Fluent
     using System.Windows.Markup;
     using System.Windows.Media;
     using Fluent.Extensibility;
+    using Fluent.Internal;
     using Fluent.Internal.KnownBoxes;
 
     /// <summary>
     /// Represent panel for group box panel
     /// </summary>
     [ContentProperty(nameof(Children))]
+    [StyleTypedProperty(Property = nameof(SeparatorStyle), StyleTargetType = typeof(Separator))]
     public class RibbonToolBar : RibbonControl, IRibbonSizeChangedSink
     {
         #region Fields
@@ -40,16 +42,13 @@ namespace Fluent
         /// <summary>
         /// Gets or sets style for the separator
         /// </summary>
-        public Style SeparatorStyle
+        public Style? SeparatorStyle
         {
-            get { return (Style)this.GetValue(SeparatorStyleProperty); }
+            get { return (Style?)this.GetValue(SeparatorStyleProperty); }
             set { this.SetValue(SeparatorStyleProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for SeparatorStyle.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="SeparatorStyle"/> dependency property.</summary>
         public static readonly DependencyProperty SeparatorStyleProperty =
             DependencyProperty.Register(nameof(SeparatorStyle), typeof(Style),
             typeof(RibbonToolBar), new PropertyMetadata(OnSeparatorStyleChanged));
@@ -79,9 +78,7 @@ namespace Fluent
 
         #region Logical & Visual Tree
 
-        /// <summary>
-        /// Gets the number of visual child elements within this element.
-        /// </summary>
+        /// <inheritdoc />
         protected override int VisualChildrenCount
         {
             get
@@ -102,14 +99,7 @@ namespace Fluent
             }
         }
 
-        /// <summary>
-        /// Overrides System.Windows.Media.Visual.GetVisualChild(System.Int32),
-        /// and returns a child at the specified index from a collection of child elements.
-        /// </summary>
-        /// <param name="index">The zero-based index of the requested
-        /// child element in the collection</param>
-        /// <returns>The requested child element. This should not return null;
-        /// if the provided index is out of range, an exception is thrown</returns>
+        /// <inheritdoc />
         protected override Visual GetVisualChild(int index)
         {
             if (this.LayoutDefinitions.Count == 0)
@@ -126,14 +116,26 @@ namespace Fluent
             return this.actualChildren[index];
         }
 
-        /// <summary>
-        /// Gets an enumerator for logical child elements of this element
-        /// </summary>
+        /// <inheritdoc />
         protected override IEnumerator LogicalChildren
         {
             get
             {
-                return this.Children.GetEnumerator();
+                var baseEnumerator = base.LogicalChildren;
+                while (baseEnumerator?.MoveNext() == true)
+                {
+                    yield return baseEnumerator.Current;
+                }
+
+                if (this.Icon is not null)
+                {
+                    yield return this.Icon;
+                }
+
+                foreach (var child in this.Children)
+                {
+                    yield return child;
+                }
             }
         }
 
@@ -161,13 +163,13 @@ namespace Fluent
             this.LayoutDefinitions.CollectionChanged += this.OnLayoutDefinitionsChanged;
         }
 
-        private void OnLayoutDefinitionsChanged(object sender, NotifyCollectionChangedEventArgs e)
+        private void OnLayoutDefinitionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
             this.rebuildVisualAndLogicalChildren = true;
             this.InvalidateMeasure();
         }
 
-        private void OnChildrenCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        private void OnChildrenCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
             // Children have changed, reset layouts
             this.rebuildVisualAndLogicalChildren = true;
@@ -182,7 +184,7 @@ namespace Fluent
         /// Gets current used layout definition (or null if no present definitions)
         /// </summary>
         /// <returns>Layout definition or null</returns>
-        internal RibbonToolBarLayoutDefinition GetCurrentLayoutDefinition()
+        internal RibbonToolBarLayoutDefinition? GetCurrentLayoutDefinition()
         {
             if (this.LayoutDefinitions.Count == 0)
             {
@@ -194,34 +196,42 @@ namespace Fluent
                 return this.LayoutDefinitions[0];
             }
 
+            var size = this.Size;
+            var map = new Dictionary<RibbonControlSize, RibbonToolBarLayoutDefinition>();
             foreach (var definition in this.LayoutDefinitions)
             {
-                if (RibbonProperties.GetSize(definition) == RibbonProperties.GetSize(this))
+                var definitionSize = definition.Size;
+                if (definitionSize == size)
                 {
                     return definition;
                 }
+
+                map[definitionSize] = definition;
             }
 
-            // TODO: try to find a better definition
-            return this.LayoutDefinitions[0];
+            // find the closest definition if no matching definition exists
+            switch (size)
+            {
+                case RibbonControlSize.Large:
+                    return map.ContainsKey(RibbonControlSize.Middle) ? map[RibbonControlSize.Middle] : (map.ContainsKey(RibbonControlSize.Small) ? map[RibbonControlSize.Small] : this.LayoutDefinitions[0]);
+
+                case RibbonControlSize.Middle:
+                    return map.ContainsKey(RibbonControlSize.Small) ? map[RibbonControlSize.Small] : (map.ContainsKey(RibbonControlSize.Large) ? map[RibbonControlSize.Large] : this.LayoutDefinitions[0]);
+
+                case RibbonControlSize.Small:
+                    return map.ContainsKey(RibbonControlSize.Middle) ? map[RibbonControlSize.Middle] : (map.ContainsKey(RibbonControlSize.Large) ? map[RibbonControlSize.Large] : this.LayoutDefinitions[0]);
+                default:
+                    return this.LayoutDefinitions[0];
+            }
         }
 
         #endregion
 
         #region Size Property Changing
 
-        /// <summary>
-        /// Handles size property changing
-        /// </summary>
-        /// <param name="previous">Previous value</param>
-        /// <param name="current">Current value</param>
+        /// <inheritdoc />
         public void OnSizePropertyChanged(RibbonControlSize previous, RibbonControlSize current)
         {
-            foreach (var frameworkElement in this.actualChildren)
-            {
-                RibbonProperties.SetSize(frameworkElement, current);
-            }
-
             this.rebuildVisualAndLogicalChildren = true;
             this.InvalidateMeasure();
         }
@@ -230,15 +240,7 @@ namespace Fluent
 
         #region Layout Overriding
 
-        /// <summary>
-        /// Measures all of the RibbonGroupBox, and resize them appropriately
-        /// to fit within the available room
-        /// </summary>
-        /// <param name="availableSize">The available size that
-        /// this element can give to child elements.</param>
-        /// <returns>The size that the panel determines it needs during
-        /// layout, based on its calculations of child element sizes.
-        /// </returns>
+        /// <inheritdoc />
         protected override Size MeasureOverride(Size availableSize)
         {
             var layoutDefinition = this.GetCurrentLayoutDefinition();
@@ -260,7 +262,7 @@ namespace Fluent
                 this.cachedControlGroups.Clear();
             }
 
-            if (layoutDefinition == null)
+            if (layoutDefinition is null)
             {
                 if (this.rebuildVisualAndLogicalChildren)
                 {
@@ -285,18 +287,12 @@ namespace Fluent
             }
         }
 
-        /// <summary>
-        /// When overridden in a derived class, positions child elements and determines
-        /// a size for a System.Windows.FrameworkElement derived class.
-        /// </summary>
-        /// <param name="finalSize">The final area within the parent that this
-        /// element should use to arrange itself and its children.</param>
-        /// <returns>The actual size used.</returns>
+        /// <inheritdoc />
         protected override Size ArrangeOverride(Size finalSize)
         {
             var layoutDefinition = this.GetCurrentLayoutDefinition();
 
-            if (layoutDefinition == null)
+            if (layoutDefinition is null)
             {
                 return this.WrapPanelLayuot(finalSize, false);
             }
@@ -325,14 +321,15 @@ namespace Fluent
             double resultWidth = 0;
             double resultHeight = 0;
 
-            var infinity = new Size(double.PositiveInfinity, double.PositiveInfinity);
-
+            var ribbonToolBarSize = RibbonProperties.GetSize(this);
             foreach (var child in this.Children)
             {
                 // Measuring
                 if (measure)
                 {
-                    child.Measure(infinity);
+                    // Apply Control Definition Properties
+                    RibbonProperties.SetAppropriateSize(child, ribbonToolBarSize);
+                    child.Measure(SizeConstants.Infinite);
                 }
 
                 if (currentheight + child.DesiredSize.Height > availableHeight)
@@ -352,6 +349,7 @@ namespace Fluent
 
                 columnWidth = Math.Max(columnWidth, child.DesiredSize.Width);
                 currentheight += child.DesiredSize.Height;
+                resultHeight = Math.Max(resultHeight, currentheight);
             }
 
             return new Size(resultWidth + columnWidth, resultHeight);
@@ -361,7 +359,7 @@ namespace Fluent
 
         #region Control and Group Creation from a Definition
 
-        private FrameworkElement GetControl(RibbonToolBarControlDefinition controlDefinition)
+        private FrameworkElement? GetControl(RibbonToolBarControlDefinition controlDefinition)
         {
             var name = controlDefinition.Target;
             return this.Children.FirstOrDefault(x => x.Name == name);
@@ -371,9 +369,7 @@ namespace Fluent
 
         private RibbonToolBarControlGroup GetControlGroup(RibbonToolBarControlGroupDefinition controlGroupDefinition)
         {
-            RibbonToolBarControlGroup controlGroup;
-
-            if (this.cachedControlGroups.TryGetValue(controlGroupDefinition, out controlGroup))
+            if (this.cachedControlGroups.TryGetValue(controlGroupDefinition, out var controlGroup))
             {
                 return controlGroup;
             }
@@ -446,8 +442,7 @@ namespace Fluent
                     {
                         #region Add separator
 
-                        Separator separator;
-                        if (!this.separatorCache.TryGetValue(rowIndex, out separator))
+                        if (this.separatorCache.TryGetValue(rowIndex, out var separator) == false)
                         {
                             separator = new Separator
                                         {
@@ -487,12 +482,11 @@ namespace Fluent
                 for (var i = 0; i < row.Children.Count; i++)
                 {
                     // Control Definition Case
-                    var ribbonToolBarControlDefinition = row.Children[i] as RibbonToolBarControlDefinition;
-                    if (ribbonToolBarControlDefinition != null)
+                    if (row.Children[i] is RibbonToolBarControlDefinition ribbonToolBarControlDefinition)
                     {
                         var control = this.GetControl(ribbonToolBarControlDefinition);
 
-                        if (control == null)
+                        if (control is null)
                         {
                             continue;
                         }
@@ -508,7 +502,7 @@ namespace Fluent
                         if (measure)
                         {
                             // Apply Control Definition Properties
-                            RibbonProperties.SetSize(control, RibbonProperties.GetSize(ribbonToolBarControlDefinition));
+                            RibbonProperties.SetAppropriateSize(control, RibbonProperties.GetSize(ribbonToolBarControlDefinition));
                             control.Width = ribbonToolBarControlDefinition.Width;
                             control.Measure(availableSize);
                         }
@@ -522,8 +516,7 @@ namespace Fluent
                     }
 
                     // Control Group Definition Case
-                    var ribbonToolBarControlGroupDefinition = row.Children[i] as RibbonToolBarControlGroupDefinition;
-                    if (ribbonToolBarControlGroupDefinition != null)
+                    if (row.Children[i] is RibbonToolBarControlGroupDefinition ribbonToolBarControlGroupDefinition)
                     {
                         var control = this.GetControlGroup(ribbonToolBarControlGroupDefinition);
 
@@ -579,23 +572,23 @@ namespace Fluent
                 {
                     var controlDefinition = item as RibbonToolBarControlDefinition;
                     var controlGroupDefinition = item as RibbonToolBarControlGroupDefinition;
-                    FrameworkElement control = null;
+                    FrameworkElement? control = null;
 
-                    if (controlDefinition != null)
+                    if (controlDefinition is not null)
                     {
                         control = this.GetControl(controlDefinition);
                     }
-                    else if (controlGroupDefinition != null)
+                    else if (controlGroupDefinition is not null)
                     {
                         control = this.GetControlGroup(controlGroupDefinition);
                     }
 
-                    if (control == null)
+                    if (control is null)
                     {
                         return defaultRowHeight;
                     }
 
-                    control.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                    control.Measure(SizeConstants.Infinite);
 
                     return control.DesiredSize.Height;
                 }
@@ -610,17 +603,10 @@ namespace Fluent
 
         #region QAT Support
 
-        // (!) RibbonToolBar must not to be in QAT
-
-        /// <summary>
-        /// Gets control which represents shortcut item.
-        /// This item MUST be syncronized with the original
-        /// and send command to original one control.
-        /// </summary>
-        /// <returns>Control which represents shortcut item</returns>
+        /// <inheritdoc />
         public override FrameworkElement CreateQuickAccessItem()
         {
-            return new Control();
+            throw new NotImplementedException();
         }
 
         #endregion

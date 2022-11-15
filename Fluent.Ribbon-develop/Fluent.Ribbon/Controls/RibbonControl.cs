@@ -2,8 +2,10 @@
 namespace Fluent
 {
     using System;
+    using System.Collections;
     using System.ComponentModel;
     using System.Windows;
+    using System.Windows.Automation.Peers;
     using System.Windows.Controls;
     using System.Windows.Controls.Primitives;
     using System.Windows.Data;
@@ -12,6 +14,7 @@ namespace Fluent
     using System.Windows.Shapes;
     using ControlzEx.Standard;
     using Fluent.Extensions;
+    using Fluent.Helpers;
     using Fluent.Internal;
     using Fluent.Internal.KnownBoxes;
 
@@ -22,12 +25,10 @@ namespace Fluent
     {
         #region KeyTip
 
-        /// <summary>
-        /// Gets or sets KeyTip for element.
-        /// </summary>
-        public string KeyTip
+        /// <inheritdoc />
+        public string? KeyTip
         {
-            get { return (string)this.GetValue(KeyTipProperty); }
+            get { return (string?)this.GetValue(KeyTipProperty); }
             set { this.SetValue(KeyTipProperty, value); }
         }
 
@@ -41,56 +42,30 @@ namespace Fluent
 
         #region Header
 
-        /// <summary>
-        /// Gets or sets element header
-        /// </summary>
-        public object Header
+        /// <inheritdoc />
+        public object? Header
         {
-            get { return (string)this.GetValue(HeaderProperty); }
+            get { return this.GetValue(HeaderProperty); }
             set { this.SetValue(HeaderProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Header.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="Header"/> dependency property.</summary>
         public static readonly DependencyProperty HeaderProperty =
-            DependencyProperty.Register(nameof(Header), typeof(object), typeof(RibbonControl), new PropertyMetadata());
+            DependencyProperty.Register(nameof(Header), typeof(object), typeof(RibbonControl), new PropertyMetadata(LogicalChildSupportHelper.OnLogicalChildPropertyChanged));
 
         #endregion
 
         #region Icon
 
-        /// <summary>
-        /// Gets or sets Icon for the element
-        /// </summary>
-        public object Icon
+        /// <inheritdoc />
+        public object? Icon
         {
             get { return this.GetValue(IconProperty); }
             set { this.SetValue(IconProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Icon.  This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty IconProperty = DependencyProperty.Register(nameof(Icon), typeof(object), typeof(RibbonControl), new PropertyMetadata(OnIconChanged));
-
-        private static void OnIconChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            var element = (RibbonControl)d;
-
-            var oldElement = e.OldValue as FrameworkElement;
-            if (oldElement != null)
-            {
-                element.RemoveLogicalChild(oldElement);
-            }
-
-            var newElement = e.NewValue as FrameworkElement;
-            if (newElement != null)
-            {
-                element.AddLogicalChild(newElement);
-            }
-        }
+        /// <summary>Identifies the <see cref="Icon"/> dependency property.</summary>
+        public static readonly DependencyProperty IconProperty = DependencyProperty.Register(nameof(Icon), typeof(object), typeof(RibbonControl), new PropertyMetadata(LogicalChildSupportHelper.OnLogicalChildPropertyChanged));
 
         #endregion
 
@@ -98,9 +73,7 @@ namespace Fluent
 
         private bool currentCanExecute = true;
 
-        /// <summary>
-        /// Gets or sets the command to invoke when this button is pressed. This is a dependency property.
-        /// </summary>
+        /// <inheritdoc />
         [Category("Action")]
         [Localizability(LocalizationCategory.NeverLocalize)]
         [Bindable(true)]
@@ -117,9 +90,7 @@ namespace Fluent
             }
         }
 
-        /// <summary>
-        /// Gets or sets the parameter to pass to the System.Windows.Controls.Primitives.ButtonBase.Command property. This is a dependency property.
-        /// </summary>
+        /// <inheritdoc />
         [Bindable(true)]
         [Localizability(LocalizationCategory.NeverLocalize)]
         [Category("Action")]
@@ -136,9 +107,7 @@ namespace Fluent
             }
         }
 
-        /// <summary>
-        /// Gets or sets the element on which to raise the specified command. This is a dependency property.
-        /// </summary>
+        /// <inheritdoc />
         [Bindable(true)]
         [Category("Action")]
         public IInputElement CommandTarget
@@ -154,19 +123,13 @@ namespace Fluent
             }
         }
 
-        /// <summary>
-        /// Identifies the CommandParameter dependency property.
-        /// </summary>
+        /// <summary>Identifies the <see cref="CommandParameter"/> dependency property.</summary>
         public static readonly DependencyProperty CommandParameterProperty = ButtonBase.CommandParameterProperty.AddOwner(typeof(RibbonControl), new PropertyMetadata());
 
-        /// <summary>
-        /// Identifies the routed Command dependency property.
-        /// </summary>
+        /// <summary>Identifies the <see cref="Command"/> dependency property.</summary>
         public static readonly DependencyProperty CommandProperty = ButtonBase.CommandProperty.AddOwner(typeof(RibbonControl), new PropertyMetadata(OnCommandChanged));
 
-        /// <summary>
-        /// Identifies the CommandTarget dependency property.
-        /// </summary>
+        /// <summary>Identifies the <see cref="CommandTarget"/> dependency property.</summary>
         public static readonly DependencyProperty CommandTargetProperty = ButtonBase.CommandTargetProperty.AddOwner(typeof(RibbonControl), new PropertyMetadata());
 
         /// <summary>
@@ -176,25 +139,22 @@ namespace Fluent
         {
             var control = d as RibbonControl;
 
-            if (control == null)
+            if (control is null)
             {
                 return;
             }
 
-            var oldCommand = e.OldValue as ICommand;
-            if (oldCommand != null)
+            if (e.OldValue is ICommand oldCommand)
             {
                 oldCommand.CanExecuteChanged -= control.OnCommandCanExecuteChanged;
             }
 
-            var newCommand = e.NewValue as ICommand;
-            if (newCommand != null)
+            if (e.NewValue is ICommand newCommand)
             {
                 newCommand.CanExecuteChanged += control.OnCommandCanExecuteChanged;
 
-                var routedUiCommand = e.NewValue as RoutedUICommand;
-                if (routedUiCommand != null
-                    && control.Header == null)
+                if (e.NewValue is RoutedUICommand routedUiCommand
+                    && control.Header is null)
                 {
                     control.Header = routedUiCommand.Text;
                 }
@@ -206,14 +166,14 @@ namespace Fluent
         /// <summary>
         /// Handles Command CanExecute changed
         /// </summary>
-        private void OnCommandCanExecuteChanged(object sender, EventArgs e)
+        private void OnCommandCanExecuteChanged(object? sender, EventArgs e)
         {
             this.UpdateCanExecute();
         }
 
         private void UpdateCanExecute()
         {
-            var canExecute = this.Command != null
+            var canExecute = this.Command is not null
                 && this.CanExecuteCommand();
 
             if (this.currentCanExecute != canExecute)
@@ -227,57 +187,35 @@ namespace Fluent
 
         #region IsEnabled
 
-        /// <summary>
-        /// Gets a value that becomes the return
-        /// value of IsEnabled in derived classes.
-        /// </summary>
-        /// <returns>
-        /// true if the element is enabled; otherwise, false.
-        /// </returns>
-        protected override bool IsEnabledCore
-        {
-            get
-            {
-                return base.IsEnabledCore && (this.currentCanExecute || this.Command == null);
-            }
-        }
+        /// <inheritdoc />
+        protected override bool IsEnabledCore => base.IsEnabledCore && (this.currentCanExecute || this.Command is null);
 
         #endregion
 
         #region Size
 
-        /// <summary>
-        /// Gets or sets Size for the element.
-        /// </summary>
+        /// <inheritdoc />
         public RibbonControlSize Size
         {
             get { return (RibbonControlSize)this.GetValue(SizeProperty); }
             set { this.SetValue(SizeProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Size.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="Size"/> dependency property.</summary>
         public static readonly DependencyProperty SizeProperty = RibbonProperties.SizeProperty.AddOwner(typeof(RibbonControl));
 
         #endregion
 
         #region SizeDefinition
 
-        /// <summary>
-        /// Gets or sets SizeDefinition for element.
-        /// </summary>
+        /// <inheritdoc />
         public RibbonControlSizeDefinition SizeDefinition
         {
             get { return (RibbonControlSizeDefinition)this.GetValue(SizeDefinitionProperty); }
             set { this.SetValue(SizeDefinitionProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for SizeDefinition.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="SizeDefinition"/> dependency property.</summary>
         public static readonly DependencyProperty SizeDefinitionProperty = RibbonProperties.SizeDefinitionProperty.AddOwner(typeof(RibbonControl));
 
         #endregion
@@ -306,12 +244,7 @@ namespace Fluent
 
         #region QuickAccess
 
-        /// <summary>
-        /// Gets control which represents shortcut item.
-        /// This item MUST be syncronized with the original
-        /// and send command to original one control.
-        /// </summary>
-        /// <returns>Control which represents shortcut item</returns>
+        /// <inheritdoc />
         public abstract FrameworkElement CreateQuickAccessItem();
 
         /// <summary>
@@ -352,13 +285,21 @@ namespace Fluent
 
             Bind(source, element, new PropertyPath(FocusManager.IsFocusScopeProperty), FocusManager.IsFocusScopeProperty, BindingMode.OneWay);
 
-            var headeredControl = source as IHeaderedControl;
-
-            if (headeredControl != null)
+            if (source is IHeaderedControl headeredControl)
             {
-                Bind(source, element, nameof(IHeaderedControl.Header), HeaderProperty, BindingMode.OneWay);
+                if (headeredControl is HeaderedItemsControl)
+                {
+                    Bind(source, element, nameof(HeaderedItemsControl.Header), HeaderedItemsControl.HeaderProperty, BindingMode.OneWay);
+                    Bind(source, element, nameof(HeaderedItemsControl.HeaderStringFormat), HeaderedItemsControl.HeaderStringFormatProperty, BindingMode.OneWay);
+                    Bind(source, element, nameof(HeaderedItemsControl.HeaderTemplate), HeaderedItemsControl.HeaderTemplateProperty, BindingMode.OneWay);
+                    Bind(source, element, nameof(HeaderedItemsControl.HeaderTemplateSelector), HeaderedItemsControl.HeaderTemplateSelectorProperty, BindingMode.OneWay);
+                }
+                else
+                {
+                    Bind(source, element, nameof(IHeaderedControl.Header), HeaderProperty, BindingMode.OneWay);
+                }
 
-                if (source.ToolTip != null
+                if (source.ToolTip is not null
                     || BindingOperations.IsDataBound(source, ToolTipProperty))
                 {
                     Bind(source, element, nameof(ToolTip), ToolTipProperty, BindingMode.OneWay);
@@ -370,10 +311,9 @@ namespace Fluent
             }
 
             var ribbonControl = source as IRibbonControl;
-            if (ribbonControl?.Icon != null)
+            if (ribbonControl?.Icon is not null)
             {
-                var iconVisual = ribbonControl.Icon as Visual;
-                if (iconVisual != null)
+                if (ribbonControl.Icon is Visual iconVisual)
                 {
                     var rect = new Rectangle
                     {
@@ -392,25 +332,21 @@ namespace Fluent
             RibbonProperties.SetSize(element, RibbonControlSize.Small);
         }
 
-        /// <summary>
-        /// Gets or sets whether control can be added to quick access toolbar
-        /// </summary>
+        /// <inheritdoc />
         public bool CanAddToQuickAccessToolBar
         {
             get { return (bool)this.GetValue(CanAddToQuickAccessToolBarProperty); }
-            set { this.SetValue(CanAddToQuickAccessToolBarProperty, value); }
+            set { this.SetValue(CanAddToQuickAccessToolBarProperty, BooleanBoxes.Box(value)); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for CanAddToQuickAccessToolBar.  This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="CanAddToQuickAccessToolBar"/> dependency property.</summary>
         public static readonly DependencyProperty CanAddToQuickAccessToolBarProperty =
-            DependencyProperty.Register(nameof(CanAddToQuickAccessToolBar), typeof(bool), typeof(RibbonControl), new PropertyMetadata(BooleanBoxes.TrueBox, OnCanAddToQuickAccessToolbarChanged));
+            DependencyProperty.Register(nameof(CanAddToQuickAccessToolBar), typeof(bool), typeof(RibbonControl), new PropertyMetadata(BooleanBoxes.TrueBox, OnCanAddToQuickAccessToolBarChanged));
 
         /// <summary>
         /// Occurs then CanAddToQuickAccessToolBar property changed
         /// </summary>
-        public static void OnCanAddToQuickAccessToolbarChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        public static void OnCanAddToQuickAccessToolBarChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             d.CoerceValue(ContextMenuProperty);
         }
@@ -472,23 +408,28 @@ namespace Fluent
         /// <returns>Workarea in witch control is placed</returns>
         public static Rect GetControlWorkArea(FrameworkElement control)
         {
-            var tabItemPos = control.PointToScreen(new Point(0, 0));
+            if (PresentationSource.FromVisual(control) is null)
+            {
+                return default;
+            }
+
+            var controlPosOnScreen = control.PointToScreen(new Point(0, 0));
 #pragma warning disable 618
-            var tabItemRect = new RECT
-                              {
-                                  Left = (int)tabItemPos.X,
-                                  Top = (int)tabItemPos.Y,
-                                  Right = (int)tabItemPos.X + (int)control.ActualWidth,
-                                  Bottom = (int)tabItemPos.Y + (int)control.ActualHeight
-                              };
-            var monitor = NativeMethods.MonitorFromRect(ref tabItemRect, MonitorOptions.MONITOR_DEFAULTTONEAREST);
+            var controlRect = new RECT
+            {
+                Left = (int)controlPosOnScreen.X,
+                Top = (int)controlPosOnScreen.Y,
+                Right = (int)controlPosOnScreen.X + (int)control.ActualWidth,
+                Bottom = (int)controlPosOnScreen.Y + (int)control.ActualHeight
+            };
+            var monitor = NativeMethods.MonitorFromRect(ref controlRect, MonitorOptions.MONITOR_DEFAULTTONEAREST);
             if (monitor != IntPtr.Zero)
             {
                 var monitorInfo = NativeMethods.GetMonitorInfo(monitor);
                 return new Rect(monitorInfo.rcWork.Left, monitorInfo.rcWork.Top, monitorInfo.rcWork.Right - monitorInfo.rcWork.Left, monitorInfo.rcWork.Bottom - monitorInfo.rcWork.Top);
             }
 #pragma warning restore 618
-            return default(Rect);
+            return default;
         }
 
         /// <summary>
@@ -498,35 +439,78 @@ namespace Fluent
         /// <returns>Workarea in witch control is placed</returns>
         public static Rect GetControlMonitor(FrameworkElement control)
         {
-            var tabItemPos = control.PointToScreen(new Point(0, 0));
-#pragma warning disable 618
-            var tabItemRect = new RECT
+            if (PresentationSource.FromVisual(control) is null)
             {
-                Left = (int)tabItemPos.X,
-                Top = (int)tabItemPos.Y,
-                Right = (int)tabItemPos.X + (int)control.ActualWidth,
-                Bottom = (int)tabItemPos.Y + (int)control.ActualHeight
+                return default;
+            }
+
+            var controlPosOnScreen = control.PointToScreen(new Point(0, 0));
+#pragma warning disable 618
+            var controlRect = new RECT
+            {
+                Left = (int)controlPosOnScreen.X,
+                Top = (int)controlPosOnScreen.Y,
+                Right = (int)controlPosOnScreen.X + (int)control.ActualWidth,
+                Bottom = (int)controlPosOnScreen.Y + (int)control.ActualHeight
             };
 
-            var monitor = NativeMethods.MonitorFromRect(ref tabItemRect, MonitorOptions.MONITOR_DEFAULTTONEAREST);
+            var monitor = NativeMethods.MonitorFromRect(ref controlRect, MonitorOptions.MONITOR_DEFAULTTONEAREST);
             if (monitor != IntPtr.Zero)
             {
                 var monitorInfo = NativeMethods.GetMonitorInfo(monitor);
                 return new Rect(monitorInfo.rcMonitor.Left, monitorInfo.rcMonitor.Top, monitorInfo.rcMonitor.Right - monitorInfo.rcMonitor.Left, monitorInfo.rcMonitor.Bottom - monitorInfo.rcMonitor.Top);
             }
 #pragma warning restore 618
-            return default(Rect);
+            return default;
         }
 
         /// <summary>
         /// Get the parent <see cref="Ribbon"/>.
         /// </summary>
         /// <returns>The found <see cref="Ribbon"/> or <c>null</c> of no parent <see cref="Ribbon"/> could be found.</returns>
-        public static Ribbon GetParentRibbon(DependencyObject obj)
+        public static Ribbon? GetParentRibbon(DependencyObject obj)
         {
             return UIHelper.GetParent<Ribbon>(obj);
         }
 
         #endregion
+
+        /// <inheritdoc />
+        void ILogicalChildSupport.AddLogicalChild(object child)
+        {
+            this.AddLogicalChild(child);
+        }
+
+        /// <inheritdoc />
+        void ILogicalChildSupport.RemoveLogicalChild(object child)
+        {
+            this.RemoveLogicalChild(child);
+        }
+
+        /// <inheritdoc />
+        protected override IEnumerator LogicalChildren
+        {
+            get
+            {
+                var baseEnumerator = base.LogicalChildren;
+                while (baseEnumerator?.MoveNext() == true)
+                {
+                    yield return baseEnumerator.Current;
+                }
+
+                if (this.Icon is not null)
+                {
+                    yield return this.Icon;
+                }
+
+                if (this.Header is not null)
+                {
+                    yield return this.Header;
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        protected override AutomationPeer OnCreateAutomationPeer() => new Fluent.Automation.Peers.RibbonControlAutomationPeer(this);
     }
 }

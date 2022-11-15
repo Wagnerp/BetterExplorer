@@ -24,11 +24,15 @@ namespace Fluent
             d.CoerceValue(FrameworkElement.ContextMenuProperty);
         }
 
-        private static object CoerceContextMenu(DependencyObject d, object basevalue)
+        /// <summary>
+        /// Coerces the ContextMenu for <paramref name="d"/>.
+        /// </summary>
+        /// <returns></returns>
+        public static object? CoerceContextMenu(DependencyObject d, object? basevalue)
         {
             var control = d as IQuickAccessItemProvider;
-            if (basevalue == null
-                && (control == null || control.CanAddToQuickAccessToolBar))
+            if (basevalue is null
+                && (control is null || control.CanAddToQuickAccessToolBar))
             {
                 return Ribbon.RibbonContextMenu;
             }

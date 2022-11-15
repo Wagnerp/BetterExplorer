@@ -2,6 +2,7 @@
 namespace Fluent
 {
     using System.ComponentModel;
+    using System.Runtime.CompilerServices;
     using System.Windows;
     using Fluent.Extensibility;
     using Fluent.Internal.KnownBoxes;
@@ -9,7 +10,7 @@ namespace Fluent
     /// <summary>
     /// Represent logical definition for a control in toolbar
     /// </summary>
-    public class RibbonToolBarControlDefinition : DependencyObject, INotifyPropertyChanged, IRibbonSizeChangedSink
+    public sealed class RibbonToolBarControlDefinition : DependencyObject, INotifyPropertyChanged, IRibbonSizeChangedSink
     {
         /// <summary>
         /// Creates a new instance
@@ -30,10 +31,7 @@ namespace Fluent
             set { this.SetValue(SizeProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Size.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="Size"/> dependency property.</summary>
         public static readonly DependencyProperty SizeProperty = RibbonProperties.SizeProperty.AddOwner(typeof(RibbonToolBarControlDefinition));
 
         #endregion
@@ -49,10 +47,7 @@ namespace Fluent
             set { this.SetValue(SizeDefinitionProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for SizeDefinition.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="SizeDefinition"/> dependency property.</summary>
         public static readonly DependencyProperty SizeDefinitionProperty = RibbonProperties.SizeDefinitionProperty.AddOwner(typeof(RibbonToolBarControlDefinition));
 
         #endregion
@@ -62,24 +57,21 @@ namespace Fluent
         /// <summary>
         /// Gets or sets name of the target control
         /// </summary>
-        public string Target
+        public string? Target
         {
-            get { return (string)this.GetValue(TargetProperty); }
+            get { return (string?)this.GetValue(TargetProperty); }
             set { this.SetValue(TargetProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for ControlName.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="Target"/> dependency property.</summary>
         public static readonly DependencyProperty TargetProperty =
             DependencyProperty.Register(nameof(Target), typeof(string),
-            typeof(RibbonToolBarControlDefinition), new PropertyMetadata(OnTargetPropertyChanged));
+            typeof(RibbonToolBarControlDefinition), new PropertyMetadata(OnTargetChanged));
 
-        private static void OnTargetPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        private static void OnTargetChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var definition = (RibbonToolBarControlDefinition)d;
-            definition.Invalidate(nameof(Target));
+            definition.OnPropertyChanged(nameof(Target));
         }
 
         #endregion
@@ -95,29 +87,24 @@ namespace Fluent
             set { this.SetValue(WidthProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Width.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="Width"/> dependency property.</summary>
         public static readonly DependencyProperty WidthProperty =
-            DependencyProperty.Register(nameof(Width), typeof(double), typeof(RibbonToolBarControlDefinition), new PropertyMetadata(DoubleBoxes.NaN, OnWidthPropertyChanged));
+            DependencyProperty.Register(nameof(Width), typeof(double), typeof(RibbonToolBarControlDefinition), new PropertyMetadata(DoubleBoxes.NaN, OnWidthChanged));
 
-        private static void OnWidthPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        private static void OnWidthChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var definition = (RibbonToolBarControlDefinition)d;
-            definition.Invalidate(nameof(Width));
+            definition.OnPropertyChanged(nameof(Width));
         }
 
         #endregion
 
         #region Invalidating
 
-        /// <summary>
-        /// Occurs when a property value changes.
-        /// </summary>
-        public event PropertyChangedEventHandler PropertyChanged;
+        /// <inheritdoc />
+        public event PropertyChangedEventHandler? PropertyChanged;
 
-        private void Invalidate(string propertyName)
+        private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
@@ -126,14 +113,11 @@ namespace Fluent
 
         #region Implementation of IRibbonSizeChangedSink
 
-        /// <summary>
-        /// Called when the size is changed
-        /// </summary>
-        /// <param name="previous">Size before change</param>
-        /// <param name="current">Size after change</param>
+        /// <inheritdoc />
         public void OnSizePropertyChanged(RibbonControlSize previous, RibbonControlSize current)
         {
-            this.Invalidate("Size");
+            // todo: do we really need this? Size is a DependencyProperty.
+            this.OnPropertyChanged(nameof(this.Size));
         }
 
         #endregion

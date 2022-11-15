@@ -17,6 +17,9 @@ using BExplorer.Shell;
 using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using System.Threading;
+using BetterExplorerControls;
+using BExplorer.Shell._Plugin_Interfaces;
+
 //###################################################################################
 // Odyssey.Controls
 // (c) Copyright 2008 Thomas Gerber
@@ -170,7 +173,7 @@ namespace Odyssey.Controls {
 
     public override void OnApplyTemplate() {
       dropDownBtn = this.GetTemplateChild(partDropDown) as Control;
-      contextMenu = this.GetTemplateChild(partMenu) as ContextMenu;
+      contextMenu = this.GetTemplateChild(partMenu) as AcrylicContextMenu;
       if (contextMenu != null) {
         contextMenu.Opened += new RoutedEventHandler(contextMenu_Opened);
       }
@@ -179,16 +182,21 @@ namespace Odyssey.Controls {
       }
 
       base.OnApplyTemplate();
+      if (contextMenu != null && this.dropDownBtn != null) {
+        contextMenu.Placement = PlacementMode.Bottom;
+        contextMenu.PlacementTarget = dropDownBtn;
+        contextMenu.VerticalOffset = dropDownBtn.ActualHeight + 35;
+      }
+
       Dispatcher.BeginInvoke(DispatcherPriority.Background, (ThreadStart)(() => {
-        var data = this.DataContext as ShellItem;
+        var data = this.DataContext as IListItemEx;
         if (data == null || data.DisplayName == "Search.search-ms")
           return;
-        if (data != null && data.CachedParsingName != KnownFolders.Computer.ParsingName && data.CachedParsingName != KnownFolders.Desktop.ParsingName) {
+        if (data != null && data.ParsingName != KnownFolders.Computer.ParsingName && data.ParsingName != KnownFolders.Desktop.ParsingName) {
           if (data.IsSearchFolder)
             return;
-          data = new ShellItem(data.CachedParsingName.ToShellParsingName());
-          var aditionalItems = new List<ShellItem>();
-          ShellItem.IsCareForMessageHandle = false;
+          var aditionalItems = new List<IListItemEx>();
+          //ShellItem.IsCareForMessageHandle = false;
           foreach (var item in data) {
             try {
               if (item.IsFolder) {
@@ -196,7 +204,7 @@ namespace Odyssey.Controls {
               }
             } catch { }
           }
-          ShellItem.IsCareForMessageHandle = true;
+          //ShellItem.IsCareForMessageHandle = true;
           this.ItemsSource = aditionalItems;
         }
       }));
@@ -219,8 +227,8 @@ namespace Odyssey.Controls {
 
     void contextMenu_Opened(object sender, RoutedEventArgs e) {
       contextMenu.Items.Clear();
-      contextMenu.ItemTemplate = ItemTemplate;
-      contextMenu.ItemTemplateSelector = ItemTemplateSelector;
+      //contextMenu.ItemTemplate = ItemTemplate;
+      //contextMenu.ItemTemplateSelector = ItemTemplateSelector;
       foreach (object item in Items) {
         if (!(item is MenuItem) && !(item is Separator)) {
           MenuItem menuItem = new MenuItem();
@@ -249,16 +257,13 @@ namespace Odyssey.Controls {
           var data = bi.Data;
           if (item != null && (item.Equals(SelectedItem) || data == (ShellItem)SelectedItem))
             menuItem.FontWeight = FontWeights.Bold;
-          menuItem.ItemTemplate = ItemTemplate;
-          menuItem.ItemTemplateSelector = ItemTemplateSelector;
+          //menuItem.ItemTemplate = ItemTemplate;
+          //menuItem.ItemTemplateSelector = ItemTemplateSelector;
           contextMenu.Items.Add(menuItem);
         } else {
           contextMenu.Items.Add(item);
         }
       }
-      contextMenu.Placement = PlacementMode.Relative;
-      contextMenu.PlacementTarget = dropDownBtn;
-      contextMenu.VerticalOffset = dropDownBtn.ActualHeight;
     }
 
     void item_Click(object sender, RoutedEventArgs e) {

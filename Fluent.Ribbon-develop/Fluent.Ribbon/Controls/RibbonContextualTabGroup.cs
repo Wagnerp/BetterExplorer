@@ -6,7 +6,7 @@ namespace Fluent
     using System.Windows;
     using System.Windows.Controls;
     using System.Windows.Input;
-
+    using System.Windows.Media;
     using Fluent.Extensions;
     using Fluent.Internal;
     using Fluent.Internal.KnownBoxes;
@@ -18,6 +18,42 @@ namespace Fluent
     {
         #region Properties
 
+        /// <summary>Identifies the <see cref="TabItemSelectedForeground"/> dependency property.</summary>
+        public static readonly DependencyProperty TabItemSelectedForegroundProperty = DependencyProperty.Register(nameof(TabItemSelectedForeground), typeof(Brush), typeof(RibbonContextualTabGroup), new PropertyMetadata(default(Brush)));
+
+        /// <summary>
+        /// Gets or sets the foreground brush to be used for a selected <see cref="RibbonTabItem"/> belonging to this group.
+        /// </summary>
+        public Brush? TabItemSelectedForeground
+        {
+            get { return (Brush?)this.GetValue(TabItemSelectedForegroundProperty); }
+            set { this.SetValue(TabItemSelectedForegroundProperty, value); }
+        }
+
+        /// <summary>Identifies the <see cref="TabItemMouseOverForeground"/> dependency property.</summary>
+        public static readonly DependencyProperty TabItemMouseOverForegroundProperty = DependencyProperty.Register(nameof(TabItemMouseOverForeground), typeof(Brush), typeof(RibbonContextualTabGroup), new PropertyMetadata(default(Brush)));
+
+        /// <summary>
+        /// Gets or sets the foreground brush to be used when the mouse is over a <see cref="RibbonTabItem"/> belonging to this group.
+        /// </summary>
+        public Brush? TabItemMouseOverForeground
+        {
+            get { return (Brush?)this.GetValue(TabItemMouseOverForegroundProperty); }
+            set { this.SetValue(TabItemMouseOverForegroundProperty, value); }
+        }
+
+        /// <summary>Identifies the <see cref="TabItemSelectedMouseOverForeground"/> dependency property.</summary>
+        public static readonly DependencyProperty TabItemSelectedMouseOverForegroundProperty = DependencyProperty.Register(nameof(TabItemSelectedMouseOverForeground), typeof(Brush), typeof(RibbonContextualTabGroup), new PropertyMetadata(default(Brush)));
+
+        /// <summary>
+        /// Gets or sets the foreground brush to be used when the mouse is over a selected <see cref="RibbonTabItem"/> belonging to this group.
+        /// </summary>
+        public Brush? TabItemSelectedMouseOverForeground
+        {
+            get { return (Brush?)this.GetValue(TabItemSelectedMouseOverForegroundProperty); }
+            set { this.SetValue(TabItemSelectedMouseOverForegroundProperty, value); }
+        }
+
         /// <summary>
         /// Gets or sets group header
         /// </summary>
@@ -27,10 +63,7 @@ namespace Fluent
             set { this.SetValue(HeaderProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Header.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="Header"/> dependency property.</summary>
         public static readonly DependencyProperty HeaderProperty =
             DependencyProperty.Register(nameof(Header), typeof(string), typeof(RibbonContextualTabGroup),
             new PropertyMetadata("RibbonContextualTabGroup", OnHeaderChanged));
@@ -55,38 +88,42 @@ namespace Fluent
         public Visibility InnerVisibility
         {
             get { return (Visibility)this.GetValue(InnerVisibilityProperty); }
-            private set { this.SetValue(InnerVisibilityPropertyKey, value); }
+            private set { this.SetValue(InnerVisibilityPropertyKey, VisibilityBoxes.Box(value)); }
         }
 
         private static readonly DependencyPropertyKey InnerVisibilityPropertyKey =
             DependencyProperty.RegisterReadOnly(nameof(InnerVisibility), typeof(Visibility), typeof(RibbonContextualTabGroup), new PropertyMetadata(VisibilityBoxes.Visible, OnInnerVisibilityChanged));
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for InnerVisibility.  This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="InnerVisibility"/> dependency property.</summary>
         public static readonly DependencyProperty InnerVisibilityProperty = InnerVisibilityPropertyKey.DependencyProperty;
 
         private static void OnInnerVisibilityChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var contextGroup = (RibbonContextualTabGroup)d;
 
-            ForceRedraw(contextGroup);
+            if (contextGroup.IsLoaded == false)
+            {
+                return;
+            }
+
+            // Delaying forced redraw fixes #536
+            contextGroup.RunInDispatcherAsync(() => ForceRedraw(contextGroup));
         }
 
         /// <summary>
         /// Gets the first visible TabItem in this group
         /// </summary>
-        public RibbonTabItem FirstVisibleItem => this.GetFirstVisibleItem();
+        public RibbonTabItem? FirstVisibleItem => this.GetFirstVisibleItem();
 
         /// <summary>
         /// Gets the first visible TabItem in this group
         /// </summary>
-        public RibbonTabItem FirstVisibleAndEnabledItem => this.GetFirstVisibleAndEnabledItem();
+        public RibbonTabItem? FirstVisibleAndEnabledItem => this.GetFirstVisibleAndEnabledItem();
 
         /// <summary>
         /// Gets the last visible TabItem in this group
         /// </summary>
-        public RibbonTabItem LastVisibleItem => this.GetLastVisibleItem();
+        public RibbonTabItem? LastVisibleItem => this.GetLastVisibleItem();
 
         #endregion
 
@@ -169,17 +206,17 @@ namespace Fluent
             this.UpdateInnerVisiblityAndGroupBorders();
         }
 
-        private RibbonTabItem GetFirstVisibleItem()
+        private RibbonTabItem? GetFirstVisibleItem()
         {
             return this.Items.FirstOrDefault(item => item.Visibility == Visibility.Visible);
         }
 
-        private RibbonTabItem GetLastVisibleItem()
+        private RibbonTabItem? GetLastVisibleItem()
         {
             return this.Items.LastOrDefault(item => item.Visibility == Visibility.Visible);
         }
 
-        private RibbonTabItem GetFirstVisibleAndEnabledItem()
+        private RibbonTabItem? GetFirstVisibleAndEnabledItem()
         {
             return this.Items.FirstOrDefault(item => item.Visibility == Visibility.Visible && item.IsEnabled);
         }
@@ -236,18 +273,16 @@ namespace Fluent
             var firstVisibleItem = this.FirstVisibleAndEnabledItem;
 
             if (e.ClickCount == 1
-                && firstVisibleItem != null)
+                && firstVisibleItem is not null)
             {
-                var currentSelectedItem = firstVisibleItem.TabControlParent?.SelectedItem as RibbonTabItem;
-
-                if (currentSelectedItem != null)
+                if (firstVisibleItem.TabControlParent?.SelectedItem is RibbonTabItem currentSelectedItem)
                 {
                     currentSelectedItem.IsSelected = false;
                 }
 
                 e.Handled = true;
 
-                if (firstVisibleItem.TabControlParent != null)
+                if (firstVisibleItem.TabControlParent is not null)
                 {
                     if (firstVisibleItem.TabControlParent.IsMinimized)
                     {
@@ -277,8 +312,13 @@ namespace Fluent
         {
             contextGroup.ForceMeasure();
 
+            foreach (var ribbonTabItem in contextGroup.Items)
+            {
+                ribbonTabItem.ForceMeasure();
+            }
+
             var ribbonTitleBar = UIHelper.GetParent<RibbonTitleBar>(contextGroup);
-            ribbonTitleBar?.ForceMeasureAndArrange();
+            ribbonTitleBar?.ScheduleForceMeasureAndArrange();
         }
     }
 }

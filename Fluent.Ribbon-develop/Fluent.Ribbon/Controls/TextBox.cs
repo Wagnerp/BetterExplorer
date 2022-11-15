@@ -1,22 +1,22 @@
 ﻿// ReSharper disable once CheckNamespace
 namespace Fluent
 {
+    using System.Collections;
     using System.Windows;
+    using System.Windows.Automation.Peers;
+    using System.Windows.Controls;
     using System.Windows.Data;
     using System.Windows.Input;
+    using Fluent.Helpers;
     using Fluent.Internal.KnownBoxes;
 
     /// <summary>
     /// Represents custom Fluent UI TextBox
     /// </summary>
+    [TemplatePart(Name = "PART_ContentHost", Type = typeof(UIElement))]
     public class TextBox : System.Windows.Controls.TextBox, IQuickAccessItemProvider, IRibbonControl
     {
-        ////#region Fields
-
-        ////// Content when the textbox got focus
-        ////private string textBoxContentWhenGotFocus;
-
-        ////#endregion
+        private UIElement? contentHost;
 
         #region Properties (Dependency)
 
@@ -31,10 +31,7 @@ namespace Fluent
             set { this.SetValue(InputWidthProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for InputWidth.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="InputWidth"/> dependency property.</summary>
         public static readonly DependencyProperty InputWidthProperty =
             DependencyProperty.Register(nameof(InputWidth), typeof(double), typeof(TextBox), new PropertyMetadata(DoubleBoxes.NaN));
 
@@ -50,27 +47,52 @@ namespace Fluent
         static TextBox()
         {
             DefaultStyleKeyProperty.OverrideMetadata(typeof(TextBox), new FrameworkPropertyMetadata(typeof(TextBox)));
-
-            ContextMenuService.Attach(typeof(TextBox));
-        }
-
-        /// <summary>
-        /// Creates a new instance.
-        /// </summary>
-        public TextBox()
-        {
-            ContextMenuService.Coerce(this);
         }
 
         #endregion
 
         #region Overrides
 
-        /// <summary>
-        /// Invoked when an unhandled System.Windows.Input.Keyboard.KeyUp�attached event reaches
-        /// an element in its route that is derived from this class. Implement this method to add class handling for this event.
-        /// </summary>
-        /// <param name="e">The System.Windows.Input.KeyEventArgs that contains the event data.</param>
+        /// <inheritdoc />
+        public override void OnApplyTemplate()
+        {
+            base.OnApplyTemplate();
+
+            this.contentHost = this.Template.FindName("PART_ContentHost", this) as UIElement;
+        }
+
+        /// <inheritdoc />
+        // Handling context menu manually to fix #653
+        protected override void OnContextMenuOpening(ContextMenuEventArgs e)
+        {
+            this.InvalidateProperty(ContextMenuProperty);
+
+            if (this.contentHost?.IsMouseOver == true
+                || this.contentHost?.IsKeyboardFocusWithin == true)
+            {
+                base.OnContextMenuOpening(e);
+            }
+            else
+            {
+                var coerced = ContextMenuService.CoerceContextMenu(this, this.ContextMenu);
+                if (coerced is not null)
+                {
+                    this.SetCurrentValue(ContextMenuProperty, coerced);
+                }
+
+                base.OnContextMenuOpening(e);
+            }
+        }
+
+        /// <inheritdoc />
+        protected override void OnContextMenuClosing(ContextMenuEventArgs e)
+        {
+            this.InvalidateProperty(ContextMenuProperty);
+
+            base.OnContextMenuClosing(e);
+        }
+
+        /// <inheritdoc />
         protected override void OnKeyUp(KeyEventArgs e)
         {
             // Avoid Click invocation (from RibbonControl)
@@ -87,12 +109,7 @@ namespace Fluent
 
         #region Quick Access Item Creating
 
-        /// <summary>
-        /// Gets control which represents shortcut item.
-        /// This item MUST be syncronized with the original
-        /// and send command to original one control.
-        /// </summary>
-        /// <returns>Control which represents shortcut item</returns>
+        /// <inheritdoc />
         public virtual FrameworkElement CreateQuickAccessItem()
         {
             var textBoxForQAT = new TextBox();
@@ -102,19 +119,15 @@ namespace Fluent
             return textBoxForQAT;
         }
 
-        /// <summary>
-        /// Gets or sets whether control can be added to quick access toolbar
-        /// </summary>
+        /// <inheritdoc />
         public bool CanAddToQuickAccessToolBar
         {
             get { return (bool)this.GetValue(CanAddToQuickAccessToolBarProperty); }
-            set { this.SetValue(CanAddToQuickAccessToolBarProperty, value); }
+            set { this.SetValue(CanAddToQuickAccessToolBarProperty, BooleanBoxes.Box(value)); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for CanAddToQuickAccessToolBar.  This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty CanAddToQuickAccessToolBarProperty = RibbonControl.CanAddToQuickAccessToolBarProperty.AddOwner(typeof(TextBox), new PropertyMetadata(BooleanBoxes.TrueBox, RibbonControl.OnCanAddToQuickAccessToolbarChanged));
+        /// <summary>Identifies the <see cref="CanAddToQuickAccessToolBar"/> dependency property.</summary>
+        public static readonly DependencyProperty CanAddToQuickAccessToolBarProperty = RibbonControl.CanAddToQuickAccessToolBarProperty.AddOwner(typeof(TextBox), new PropertyMetadata(BooleanBoxes.TrueBox, RibbonControl.OnCanAddToQuickAccessToolBarChanged));
 
         /// <summary>
         /// This method must be overridden to bind properties to use in quick access creating
@@ -171,115 +184,112 @@ namespace Fluent
 
         #region Size
 
-        /// <summary>
-        /// Gets or sets Size for the element.
-        /// </summary>
+        /// <inheritdoc />
         public RibbonControlSize Size
         {
             get { return (RibbonControlSize)this.GetValue(SizeProperty); }
             set { this.SetValue(SizeProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Size.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="Size"/> dependency property.</summary>
         public static readonly DependencyProperty SizeProperty = RibbonProperties.SizeProperty.AddOwner(typeof(TextBox));
 
         #endregion
 
         #region SizeDefinition
 
-        /// <summary>
-        /// Gets or sets SizeDefinition for element.
-        /// </summary>
+        /// <inheritdoc />
         public RibbonControlSizeDefinition SizeDefinition
         {
             get { return (RibbonControlSizeDefinition)this.GetValue(SizeDefinitionProperty); }
             set { this.SetValue(SizeDefinitionProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for SizeDefinition.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <summary>Identifies the <see cref="SizeDefinition"/> dependency property.</summary>
         public static readonly DependencyProperty SizeDefinitionProperty = RibbonProperties.SizeDefinitionProperty.AddOwner(typeof(TextBox));
 
         #endregion
 
         #region KeyTip
 
-        /// <summary>
-        /// Gets or sets KeyTip for element.
-        /// </summary>
-        public string KeyTip
+        /// <inheritdoc />
+        public string? KeyTip
         {
-            get { return (string)this.GetValue(KeyTipProperty); }
+            get { return (string?)this.GetValue(KeyTipProperty); }
             set { this.SetValue(KeyTipProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Keys.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
+        /// <inheritdoc cref="Fluent.KeyTip.KeysProperty"/>
         public static readonly DependencyProperty KeyTipProperty = Fluent.KeyTip.KeysProperty.AddOwner(typeof(TextBox));
 
         #endregion
 
         #region Header
 
-        /// <summary>
-        /// Gets or sets element Text
-        /// </summary>
-        public object Header
+        /// <inheritdoc />
+        public object? Header
         {
             get { return this.GetValue(HeaderProperty); }
             set { this.SetValue(HeaderProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Header.
-        /// This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty HeaderProperty = DependencyProperty.Register(nameof(Header), typeof(object), typeof(TextBox), new PropertyMetadata());
+        /// <summary>Identifies the <see cref="Header"/> dependency property.</summary>
+        public static readonly DependencyProperty HeaderProperty = RibbonControl.HeaderProperty.AddOwner(typeof(TextBox), new PropertyMetadata(LogicalChildSupportHelper.OnLogicalChildPropertyChanged));
 
         #endregion
 
         #region Icon
 
-        /// <summary>
-        /// Gets or sets Icon for the element
-        /// </summary>
-        public object Icon
+        /// <inheritdoc />
+        public object? Icon
         {
             get { return this.GetValue(IconProperty); }
             set { this.SetValue(IconProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for Icon.  This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty IconProperty = RibbonControl.IconProperty.AddOwner(typeof(TextBox), new PropertyMetadata(OnIconChanged));
+        /// <summary>Identifies the <see cref="Icon"/> dependency property.</summary>
+        public static readonly DependencyProperty IconProperty = RibbonControl.IconProperty.AddOwner(typeof(TextBox), new PropertyMetadata(LogicalChildSupportHelper.OnLogicalChildPropertyChanged));
 
-        private static void OnIconChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        #endregion
+
+        #endregion
+
+        /// <inheritdoc />
+        void ILogicalChildSupport.AddLogicalChild(object child)
         {
-            var element = (TextBox)d;
+            this.AddLogicalChild(child);
+        }
 
-            var oldElement = e.OldValue as FrameworkElement;
-            if (oldElement != null)
-            {
-                element.RemoveLogicalChild(oldElement);
-            }
+        /// <inheritdoc />
+        void ILogicalChildSupport.RemoveLogicalChild(object child)
+        {
+            this.RemoveLogicalChild(child);
+        }
 
-            var newElement = e.NewValue as FrameworkElement;
-            if (newElement != null)
+        /// <inheritdoc />
+        protected override IEnumerator LogicalChildren
+        {
+            get
             {
-                element.AddLogicalChild(newElement);
+                var baseEnumerator = base.LogicalChildren;
+                while (baseEnumerator?.MoveNext() == true)
+                {
+                    yield return baseEnumerator.Current;
+                }
+
+                if (this.Icon is not null)
+                {
+                    yield return this.Icon;
+                }
+
+                if (this.Header is not null)
+                {
+                    yield return this.Header;
+                }
             }
         }
 
-        #endregion
-
-        #endregion
+        /// <inheritdoc />
+        protected override AutomationPeer OnCreateAutomationPeer() => new Fluent.Automation.Peers.RibbonTextBoxAutomationPeer(this);
     }
 }

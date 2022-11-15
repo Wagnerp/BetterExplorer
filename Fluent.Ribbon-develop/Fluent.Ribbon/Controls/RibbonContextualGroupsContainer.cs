@@ -16,23 +16,17 @@ namespace Fluent
     {
         private readonly List<Size> sizes = new List<Size>();
 
-        /// <summary>
-        /// When overridden in a derived class, positions child elements and determines a size for
-        /// a System.Windows.FrameworkElement derived class.
-        /// </summary>
-        /// <param name="finalSize">The final area within the parent that this element should
-        /// use to arrange itself and its children.</param>
-        /// <returns>The actual size used.</returns>
+        /// <inheritdoc />
         protected override Size ArrangeOverride(Size finalSize)
         {
             var finalRect = new Rect(finalSize);
             var index = 0;
 
-            foreach (UIElement item in this.InternalChildren)
+            foreach (UIElement? item in this.InternalChildren)
             {
                 finalRect.Width = this.sizes[index].Width; //item.DesiredSize.Width;
                 finalRect.Height = Math.Max(finalSize.Height, this.sizes[index].Height); //Math.Max(finalSize.Height, item.DesiredSize.Height);
-                item.Arrange(finalRect);
+                item?.Arrange(finalRect);
                 finalRect.X += this.sizes[index].Width; // item.DesiredSize.Width;
                 index++;
             }
@@ -40,18 +34,11 @@ namespace Fluent
             return finalSize;
         }
 
-        /// <summary>
-        /// When overridden in a derived class, measures the size in layout required for
-        /// child elements and determines a size for the System.Windows.FrameworkElement-derived class.
-        /// </summary>
-        /// <param name="availableSize">The available size that this element can give to child elements.
-        /// Infinity can be specified as a value to indicate that the element will size to whatever content is available.</param>
-        /// <returns>The size that this element determines it needs during layout, based on its calculations of child element sizes.</returns>
+        /// <inheritdoc />
         protected override Size MeasureOverride(Size availableSize)
         {
             var allGroupsWidth = 0D;
             this.sizes.Clear();
-            var infinity = new Size(double.PositiveInfinity, double.PositiveInfinity);
 
             var availableSizeHeight = availableSize.Height;
 
@@ -60,8 +47,13 @@ namespace Fluent
                 availableSizeHeight = 0;
             }
 
-            foreach (RibbonContextualTabGroup contextualGroup in this.InternalChildren)
+            foreach (RibbonContextualTabGroup? contextualGroup in this.InternalChildren)
             {
+                if (contextualGroup is null)
+                {
+                    continue;
+                }
+
                 // Calculate width of tab items of the group
                 var tabsWidth = 0D;
 
@@ -73,7 +65,7 @@ namespace Fluent
                     tabsWidth += item.DesiredSize.Width;
                 }
 
-                contextualGroup.Measure(infinity);
+                contextualGroup.Measure(SizeConstants.Infinite);
                 var groupWidth = contextualGroup.DesiredSize.Width;
 
                 var tabWasChanged = false;
@@ -103,10 +95,9 @@ namespace Fluent
                     // to invalidate down to RibbonTabsContainer
                     var visual = visibleItems[0] as Visual;
 
-                    while (visual != null)
+                    while (visual is not null)
                     {
-                        var uiElement = visual as UIElement;
-                        if (uiElement != null)
+                        if (visual is UIElement uiElement)
                         {
                             if (uiElement is RibbonTabsContainer)
                             {

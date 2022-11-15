@@ -1,8 +1,12 @@
-﻿// ReSharper disable once CheckNamespace
+// ReSharper disable once CheckNamespace
 namespace Fluent
 {
     using System;
+    using System.Collections;
+    using System.Reflection;
     using System.Windows;
+    using System.Windows.Controls;
+    using Fluent.Helpers;
     using Fluent.Internal.KnownBoxes;
 
     /// <summary>
@@ -10,6 +14,8 @@ namespace Fluent
     /// </summary>
     public class ApplicationMenu : DropDownButton
     {
+        private static readonly PropertyInfo? targetElementPropertyInfo = typeof(ContextMenuEventArgs).GetProperty("TargetElement", BindingFlags.Instance | BindingFlags.NonPublic);
+
         #region Properties
 
         /// <summary>
@@ -21,41 +27,32 @@ namespace Fluent
             set { this.SetValue(RightPaneWidthProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for RightContentWidth.  This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty RightPaneWidthProperty =
-            DependencyProperty.Register(nameof(RightPaneWidth), typeof(double), typeof(ApplicationMenu), new PropertyMetadata(300.0));
+        /// <summary>Identifies the <see cref="RightPaneWidth"/> dependency property.</summary>
+        public static readonly DependencyProperty RightPaneWidthProperty = DependencyProperty.Register(nameof(RightPaneWidth), typeof(double), typeof(ApplicationMenu), new PropertyMetadata(300.0));
 
         /// <summary>
         /// Gets or sets application menu right pane content
         /// </summary>
-        public object RightPaneContent
+        public object? RightPaneContent
         {
             get { return this.GetValue(RightPaneContentProperty); }
             set { this.SetValue(RightPaneContentProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for RightContent.  This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty RightPaneContentProperty =
-            DependencyProperty.Register(nameof(RightPaneContent), typeof(object), typeof(ApplicationMenu), new PropertyMetadata());
+        /// <summary>Identifies the <see cref="RightPaneContent"/> dependency property.</summary>
+        public static readonly DependencyProperty RightPaneContentProperty = DependencyProperty.Register(nameof(RightPaneContent), typeof(object), typeof(ApplicationMenu), new PropertyMetadata(LogicalChildSupportHelper.OnLogicalChildPropertyChanged));
 
         /// <summary>
         /// Gets or sets application menu bottom pane content
         /// </summary>
-        public object FooterPaneContent
+        public object? FooterPaneContent
         {
             get { return this.GetValue(FooterPaneContentProperty); }
             set { this.SetValue(FooterPaneContentProperty, value); }
         }
 
-        /// <summary>
-        /// Using a DependencyProperty as the backing store for BottomContent.  This enables animation, styling, binding, etc...
-        /// </summary>
-        public static readonly DependencyProperty FooterPaneContentProperty =
-            DependencyProperty.Register(nameof(FooterPaneContent), typeof(object), typeof(ApplicationMenu), new PropertyMetadata());
+        /// <summary>Identifies the <see cref="FooterPaneContent"/> dependency property.</summary>
+        public static readonly DependencyProperty FooterPaneContentProperty = DependencyProperty.Register(nameof(FooterPaneContent), typeof(object), typeof(ApplicationMenu), new PropertyMetadata(LogicalChildSupportHelper.OnLogicalChildPropertyChanged));
 
         #endregion
 
@@ -73,10 +70,10 @@ namespace Fluent
             // Disable QAT for this control
             CanAddToQuickAccessToolBarProperty.OverrideMetadata(type, new FrameworkPropertyMetadata(BooleanBoxes.FalseBox));
             // Make default KeyTip
-            KeyTipProperty.OverrideMetadata(type, new FrameworkPropertyMetadata(null, CoerceKeyTipKeys));
+            KeyTipProperty.OverrideMetadata(type, new FrameworkPropertyMetadata(null, CoerceKeys));
         }
 
-        private static object CoerceKeyTipKeys(DependencyObject d, object basevalue)
+        private static object CoerceKeys(DependencyObject d, object? basevalue)
         {
             return basevalue ?? RibbonLocalization.Current.Localization.BackstageButtonKeyTip;
         }
@@ -91,19 +88,54 @@ namespace Fluent
 
         #endregion
 
+        /// <inheritdoc />
+        protected override void OnContextMenuOpening(ContextMenuEventArgs e)
+        {
+            if (ReferenceEquals(e.Source, this))
+            {
+                var targetElement = targetElementPropertyInfo?.GetValue(e);
+                if (targetElement is null
+                    || ReferenceEquals(targetElement, this))
+                {
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            base.OnContextMenuOpening(e);
+        }
+
         #region Quick Access Toolbar
 
-        /// <summary>
-        /// Gets control which represents shortcut item.
-        /// This item MUST be syncronized with the original
-        /// and send command to original one control.
-        /// </summary>
-        /// <returns>Control which represents shortcut item</returns>
+        /// <inheritdoc />
         public override FrameworkElement CreateQuickAccessItem()
         {
             throw new NotImplementedException();
         }
 
         #endregion
+
+        /// <inheritdoc />
+        protected override IEnumerator LogicalChildren
+        {
+            get
+            {
+                var baseEnumerator = base.LogicalChildren;
+                while (baseEnumerator?.MoveNext() == true)
+                {
+                    yield return baseEnumerator.Current;
+                }
+
+                if (this.RightPaneContent is not null)
+                {
+                    yield return this.RightPaneContent;
+                }
+
+                if (this.FooterPaneContent is not null)
+                {
+                    yield return this.FooterPaneContent;
+                }
+            }
+        }
     }
 }
